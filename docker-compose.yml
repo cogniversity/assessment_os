@@ -1,0 +1,64 @@
+x-app-environment: &app-environment
+  LOAD_DOTENV: "false"
+  NODE_ENV: production
+  PORT: "3001"
+  DATABASE_URL: postgresql://${POSTGRES_USER:-assessment}:${POSTGRES_PASSWORD:-assessment}@${POSTGRES_HOST:-db}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-assessment_os}
+  SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in compose.env}
+  CLIENT_URL: ${CLIENT_URL:-http://localhost}
+  SERVER_URL: ${SERVER_URL:-http://localhost}
+  OIDC_ISSUER: ${OIDC_ISSUER:-}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+  OIDC_CALLBACK_URL: ${OIDC_CALLBACK_URL:-http://localhost/api/auth/callback}
+  ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@example.com}
+  CAPABILITY_MANAGER_EMAILS: ${CAPABILITY_MANAGER_EMAILS:-manager@example.com}
+  PHOTO_STORAGE_PATH: /app/uploads
+  LOGO_PATH: /app/client/public/assessment_os_logo.png
+  DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-false}
+  SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+  APPID_IAM_APIKEY: ${APPID_IAM_APIKEY:-}
+  APPID_TENANT_ID: ${APPID_TENANT_ID:-}
+  APPID_MANAGEMENT_URL: ${APPID_MANAGEMENT_URL:-https://us-east.appid.cloud.ibm.com}
+  APPID_CD_IDENTITY_FIELD: ${APPID_CD_IDENTITY_FIELD:-email}
+  APPID_EXPORT_SECRET: ${APPID_EXPORT_SECRET:-}
+  RUN_DB_SEED: ${RUN_DB_SEED:-true}
+  DB_RESET_ON_START: ${DB_RESET_ON_START:-false}
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-assessment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-assessment}
+      POSTGRES_DB: ${POSTGRES_DB:-assessment_os}
+    ports:
+      - "${POSTGRES_PUBLISH_PORT:-5432}:5432"
+    volumes:
+      - ./data/postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  server:
+    image: cogniverse/assessment-os-api:${IMAGE_TAG:-latest}
+    environment:
+      <<: *app-environment
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./data/uploads:/app/uploads
+    expose:
+      - "3001"
+    restart: unless-stopped
+
+  client:
+    image: cogniverse/assessment-os-web:${IMAGE_TAG:-latest}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      - server
+    restart: unless-stopped

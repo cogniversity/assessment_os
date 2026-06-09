@@ -1,0 +1,9 @@
+# Optional production settings. Copy to docker-compose.override.yml (auto-merged by Compose).
+services:
+  server:
+    environment:
+      CLIENT_URL: https://your-public-host.example.com
+      SERVER_URL: https://your-public-host.example.com
+      OIDC_CALLBACK_URL: https://your-public-host.example.com/api/auth/callback
+      SESSION_COOKIE_SECURE: "true"
+      RUN_DB_SEED: "false"

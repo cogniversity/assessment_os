@@ -1,0 +1,96 @@
+# LEGACY: build API + SPA from source. Prefer root docker-compose.yml (Hub images).
+# See archive/README.md
+#
+# Profiles:
+#   (default)     db only — local dev with `npm run dev`
+#   full          db + API + nginx SPA
+#   edge          extra nginx hop in front of client (port 8080)
+
+x-app-environment: &app-environment
+  LOAD_DOTENV: "false"
+  NODE_ENV: production
+  PORT: "3001"
+  DATABASE_URL: postgresql://assessment:assessment@db:5432/assessment_os
+  SESSION_SECRET: change-me-in-production-use-long-random-string
+  CLIENT_URL: http://localhost
+  SERVER_URL: http://localhost
+  OIDC_ISSUER: ""
+  OIDC_CLIENT_ID: ""
+  OIDC_CLIENT_SECRET: ""
+  OIDC_CALLBACK_URL: http://localhost/api/auth/callback
+  ADMIN_EMAILS: admin@example.com
+  CAPABILITY_MANAGER_EMAILS: manager@example.com
+  PHOTO_STORAGE_PATH: /app/uploads
+  LOGO_PATH: /app/client/public/assessment_os_logo.png
+  DEV_AUTH_ENABLED: "true"
+  SESSION_COOKIE_SECURE: "false"
+  APPID_IAM_APIKEY: ""
+  APPID_TENANT_ID: ""
+  APPID_MANAGEMENT_URL: https://us-east.appid.cloud.ibm.com
+  APPID_CD_IDENTITY_FIELD: email
+  APPID_EXPORT_SECRET: ""
+
+services:
+  db:
+    image: postgres:17
+    container_name: assessment_os_db
+    environment:
+      POSTGRES_USER: assessment
+      POSTGRES_PASSWORD: assessment
+      POSTGRES_DB: assessment_os
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assessment -d assessment_os"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    container_name: assessment_os_server
+    environment:
+      <<: *app-environment
+      RUN_DB_SEED: "true"
+      DB_RESET_ON_START: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+    expose:
+      - "3001"
+    restart: unless-stopped
+
+  client:
+    profiles: ["full"]
+    build:
+      context: ..
+      dockerfile: client/Dockerfile
+    container_name: assessment_os_client
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  proxy:
+    profiles: ["edge"]
+    image: nginx:alpine
+    container_name: assessment_os_proxy
+    ports:
+      - "8080:80"
+    volumes:
+      - ../docker/nginx-edge.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - client
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  uploads_data:

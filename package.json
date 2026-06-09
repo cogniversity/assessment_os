@@ -1,0 +1,27 @@
+{
+  "name": "assessment-os",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "workspaces": [
+    "packages/shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "npm run build -w packages/shared && npm run db:generate -w server && concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w packages/shared && npm run build -w server && npm run build -w client",
+    "db:up": "docker compose --env-file compose.env up db -d",
+    "db:migrate": "npm run db:migrate -w server",
+    "db:seed": "npm run db:seed -w server",
+    "docker:build": "powershell -File scripts/docker-build-hub.ps1",
+    "docker:up": "docker compose --env-file compose.env up -d",
+    "docker:up:local": "docker compose --env-file compose.env -f docker-compose.yml -f docker-compose.build.yml up -d --build",
+    "docker:down": "docker compose --env-file compose.env down",
+    "docker:reset": "docker compose --env-file compose.env down && node -e \"const fs=require('fs');for (const p of ['data/postgres','data/uploads']) fs.rmSync(p,{recursive:true,force:true})\" && docker compose --env-file compose.env pull && docker compose --env-file compose.env up -d",
+    "docker:reset:local": "docker compose --env-file compose.env down && node -e \"const fs=require('fs');for (const p of ['data/postgres','data/uploads']) fs.rmSync(p,{recursive:true,force:true})\" && npm run docker:up:local"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

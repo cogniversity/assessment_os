@@ -1,0 +1,28 @@
+import { Router } from "express";
+import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { Role } from "@assessment-os/shared";
+import { categoriesRouter } from "./categories.js";
+import { skillsRouter } from "./skills.js";
+import { topicsRouter } from "./topics.js";
+import { questionsRouter } from "./questions.js";
+import { usersRouter } from "./users.js";
+import { profileFieldsRouter } from "./profileFields.js";
+import { exportRouter } from "./export.js";
+import { questionImportRouter } from "./questionImport.js";
+import { blueprintsRouter } from "./blueprints.js";
+import { appidUsersRouter } from "./appidUsers.js";
+import { dataTransferRouter } from "./dataTransfer.js";
+
+export const adminRouter = Router();
+adminRouter.use(requireAuth, requireRole(Role.ADMIN));
+adminRouter.use("/categories", categoriesRouter);
+adminRouter.use("/skills", skillsRouter);
+adminRouter.use("/topics", topicsRouter);
+adminRouter.use("/questions", questionsRouter);
+adminRouter.use("/blueprints", blueprintsRouter);
+adminRouter.use("/users", usersRouter);
+adminRouter.use("/profile-fields", profileFieldsRouter);
+adminRouter.use("/export", exportRouter);
+adminRouter.use("/question-import", questionImportRouter);
+adminRouter.use("/appid-users", appidUsersRouter);
+adminRouter.use("/data-transfer", dataTransferRouter);

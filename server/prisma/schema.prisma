@@ -1,0 +1,471 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  capability_manager
+  candidate
+}
+
+enum Difficulty {
+  easy
+  medium
+  hard
+}
+
+enum QuestionStatus {
+  draft
+  published
+}
+
+enum AssessmentStatus {
+  assigned
+  in_progress
+  completed
+  expired
+  abandoned
+}
+
+enum AttemptStatus {
+  in_progress
+  completed
+  timed_out
+  abandoned
+}
+
+enum Proficiency {
+  entry
+  beginner
+  advanced_beginner
+  competent
+  proficient
+  expert
+}
+
+enum RemarkVisibility {
+  normal
+  confidential
+}
+
+enum ProctoringEventType {
+  tab_switch
+  focus_loss
+  focus_return
+  fullscreen_exit
+  copy_attempt
+  paste_attempt
+  context_menu
+}
+
+enum PhotoKind {
+  start
+  periodic
+}
+
+enum QuestionType {
+  single
+  multi
+}
+
+enum MultiSelectScoringMode {
+  all_or_nothing
+  partial_credit
+}
+
+enum ReattemptRequestStatus {
+  pending
+  approved
+  rejected
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  role      Role     @default(candidate)
+  oidcSub   String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile              CandidateProfile?
+  assessments          Assessment[]          @relation("CandidateAssessments")
+  assignedAssessments  Assessment[]          @relation("AssignedBy")
+  remarksAuthored      CandidateRemark[]     @relation("RemarkAuthor")
+  remarksReceived      CandidateRemark[]     @relation("RemarkCandidate")
+  auditLogsActed       ProfileAuditLog[]     @relation("AuditActor")
+  auditLogsReceived    ProfileAuditLog[]     @relation("AuditCandidate")
+  externalCertificates ExternalCertificate[]
+  proficiencyUpdates   CandidateProfile[]    @relation("ProficiencyUpdater")
+  createdBlueprints    AssessmentBlueprint[] @relation("BlueprintCreatedBy")
+  reattemptRequests    ReattemptRequest[]    @relation("ReattemptCandidate")
+  reattemptReviews     ReattemptRequest[]    @relation("ReattemptReviewer")
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  topics      Topic[]
+}
+
+model Skill {
+  id          String        @id @default(uuid())
+  code        String        @unique
+  name        String        @unique
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  roles       SkillRole[]
+  questions   Question[]
+  assessments Assessment[]
+  blueprints  AssessmentBlueprint[]
+}
+
+// Roles defined per skill — not to be confused with User.role (RBAC)
+model SkillRole {
+  id                 String   @id @default(uuid())
+  skillId            String
+  code               String   // unique within skill, e.g. "SR_DEV"
+  name               String   // display name, e.g. "Senior Developer"
+  description        String?
+  sortOrder          Int      @default(0)
+  isActive           Boolean  @default(true)
+  defaultEasyCount   Int?
+  defaultMediumCount Int?
+  defaultHardCount   Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  skill              Skill    @relation(fields: [skillId], references: [id])
+  questionRoles      QuestionSkillRole[]
+  blueprints         AssessmentBlueprint[]
+  assessments        Assessment[]
+
+  @@unique([skillId, code])
+  @@index([skillId, isActive])
+}
+
+// Topic: question container. Certificate/pass-mark settings kept here as
+// author-configured defaults; blueprints own their own copies of those settings.
+model Topic {
+  id                     String   @id @default(uuid())
+  categoryId             String
+  name                   String
+  description            String?
+  revealAnswersAfterTest Boolean  @default(false)
+  passMark               Int      @default(60)
+  issueCertificate       Boolean  @default(false)
+  showProficiencyOnCert  Boolean  @default(false)
+  certValidityDays       Int      @default(0)
+  proficiencyThresholds  Json     @default("[40,55,70,85,95]")
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  category               Category @relation(fields: [categoryId], references: [id])
+  questions              Question[]
+  blueprintTopics        BlueprintTopic[]
+  assessmentTopics       AssessmentTopic[]
+}
+
+model Question {
+  id             String         @id @default(uuid())
+  topicId        String
+  skillId        String
+  questionType   QuestionType   @default(single)
+  difficulty     Difficulty
+  status         QuestionStatus @default(draft)
+  stem           String
+  options        Json
+  correctIndices Int[]
+  explanation    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  topic          Topic          @relation(fields: [topicId], references: [id])
+  skill          Skill          @relation(fields: [skillId], references: [id])
+  skillRoles     QuestionSkillRole[]
+  attemptAnswers AttemptAnswer[]
+
+  @@index([skillId, topicId, status])
+  @@index([skillId, topicId, difficulty, status])
+}
+
+// Junction: one question can be tagged to multiple skill roles (same skill)
+model QuestionSkillRole {
+  questionId  String
+  skillRoleId String
+  question    Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  skillRole   SkillRole @relation(fields: [skillRoleId], references: [id])
+
+  @@id([questionId, skillRoleId])
+  @@index([skillRoleId])
+}
+
+// Named reusable blueprint: Name + Skill + Topic(s) + Skill Role + Difficulty Mix + Pass mark + Timer
+// Certificate/pass settings live HERE, not inherited from any individual topic.
+model AssessmentBlueprint {
+  id               String   @id @default(uuid())
+  name             String
+  description      String?
+  skillId          String
+  skillRoleId      String
+  questionCount    Int      // easyCount + mediumCount + hardCount
+  easyCount        Int
+  mediumCount      Int
+  hardCount        Int
+  timeLimitMinutes Int      @default(0)
+  // Assessment configuration — owned by blueprint, not by any single topic
+  passMark               Int     @default(60)
+  issueCertificate       Boolean @default(false)
+  showProficiencyOnCert  Boolean @default(false)
+  certValidityDays       Int     @default(0)
+  revealAnswersAfterTest Boolean @default(false)
+  proficiencyThresholds  Json    @default("[40,55,70,85,95]")
+  multiSelectScoringMode       MultiSelectScoringMode @default(all_or_nothing)
+  proctoringPhotoIntervalMinutes Int    @default(5)
+  proctoringInstructions       String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  skill            Skill     @relation(fields: [skillId], references: [id])
+  skillRole        SkillRole @relation(fields: [skillRoleId], references: [id])
+  topics           BlueprintTopic[]
+  createdBy        User?     @relation("BlueprintCreatedBy", fields: [createdById], references: [id])
+  assessments      Assessment[]
+}
+
+// Junction: blueprint ↔ topics (many-to-many)
+model BlueprintTopic {
+  blueprintId String
+  topicId     String
+  blueprint   AssessmentBlueprint @relation(fields: [blueprintId], references: [id], onDelete: Cascade)
+  topic       Topic               @relation(fields: [topicId], references: [id])
+
+  @@id([blueprintId, topicId])
+  @@index([topicId])
+}
+
+model Assessment {
+  id               String           @id @default(uuid())
+  userId           String
+  skillId          String
+  skillRoleId      String
+  assignedById     String
+  blueprintId      String?
+  displayName      String?
+  questionCount    Int
+  easyCount        Int
+  mediumCount      Int
+  hardCount        Int
+  timeLimitMinutes Int              @default(0)
+  deadline         DateTime?
+  status           AssessmentStatus @default(assigned)
+  // Snapshotted from blueprint at assignment time — never re-read from blueprint/topic
+  passMark               Int     @default(60)
+  issueCertificate       Boolean @default(false)
+  showProficiencyOnCert  Boolean @default(false)
+  certValidityDays       Int     @default(0)
+  revealAnswersAfterTest Boolean @default(false)
+  proficiencyThresholds  Json    @default("[40,55,70,85,95]")
+  multiSelectScoringMode         MultiSelectScoringMode @default(all_or_nothing)
+  proctoringPhotoIntervalMinutes Int     @default(5)
+  proctoringInstructions         String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  user             User             @relation("CandidateAssessments", fields: [userId], references: [id])
+  skill            Skill            @relation(fields: [skillId], references: [id])
+  skillRole        SkillRole        @relation(fields: [skillRoleId], references: [id])
+  assignedBy       User             @relation("AssignedBy", fields: [assignedById], references: [id])
+  blueprint        AssessmentBlueprint? @relation(fields: [blueprintId], references: [id])
+  topics           AssessmentTopic[]
+  attempts         AssessmentAttempt[]
+  reattemptRequests ReattemptRequest[]
+}
+
+model ReattemptRequest {
+  id           String                 @id @default(uuid())
+  assessmentId String
+  candidateId  String
+  message      String?
+  status       ReattemptRequestStatus @default(pending)
+  managerNote  String?
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  candidate  User       @relation("ReattemptCandidate", fields: [candidateId], references: [id])
+  reviewedBy User?      @relation("ReattemptReviewer", fields: [reviewedById], references: [id])
+
+  @@index([assessmentId, status])
+  @@index([candidateId])
+  @@index([status, createdAt])
+}
+
+// Junction: assessment ↔ topics (many-to-many)
+model AssessmentTopic {
+  assessmentId String
+  topicId      String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  topic        Topic      @relation(fields: [topicId], references: [id])
+
+  @@id([assessmentId, topicId])
+  @@index([topicId])
+}
+
+model AssessmentAttempt {
+  id              String         @id @default(uuid())
+  assessmentId    String
+  questionOrder   Json
+  currentAnswers  Json           @default("{}")
+  score           Int?
+  status          AttemptStatus  @default(in_progress)
+  startedAt       DateTime       @default(now())
+  completedAt     DateTime?
+  autoSubmittedAt DateTime?
+  assessment      Assessment     @relation(fields: [assessmentId], references: [id])
+  answers         AttemptAnswer[]
+  photos          AttemptPhoto[]
+  proctoringEvents ProctoringEvent[]
+  certificate     Certificate?
+}
+
+model AttemptAnswer {
+  id              String            @id @default(uuid())
+  attemptId       String
+  questionId      String
+  selectedIndices Int[]             @default([])
+  pointsEarned    Float?
+  isFullyCorrect  Boolean?
+  attempt         AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question        Question          @relation(fields: [questionId], references: [id])
+}
+
+model AttemptPhoto {
+  id         String            @id @default(uuid())
+  attemptId  String
+  filePath   String
+  kind       PhotoKind         @default(start)
+  capturedAt DateTime          @default(now())
+  attempt    AssessmentAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+}
+
+model ProctoringEvent {
+  id         String              @id @default(uuid())
+  attemptId  String
+  eventType  ProctoringEventType
+  occurredAt DateTime            @default(now())
+  metadata   Json?
+  attempt    AssessmentAttempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+}
+
+model Certificate {
+  id          String            @id @default(uuid())
+  attemptId   String            @unique
+  certNumber  String            @unique
+  proficiency Proficiency
+  issuedAt    DateTime          @default(now())
+  expiresAt   DateTime?
+  attempt     AssessmentAttempt @relation(fields: [attemptId], references: [id])
+}
+
+model CandidateProfile {
+  id                    String      @id @default(uuid())
+  userId                String      @unique
+  country               String?
+  employeeId            String?
+  employeeName          String?
+  band                  String?
+  subBand               String?
+  reportingManagerCode  String?
+  reportingManagerName  String?
+  joiningDate           DateTime?
+  projectCode           String?
+  projectName           String?
+  lastProjectCode       String?
+  lastProjectName       String?
+  customerCode          String?
+  customerName          String?
+  assignFromDate        DateTime?
+  assignToDate          DateTime?
+  allocationPercentage  Float?
+  fte                   Float?
+  status                String?
+  customFields          Json        @default("{}")
+  resumeFilePath        String?
+  currentProficiency    Proficiency?
+  proficiencyOverridden Boolean     @default(false)
+  proficiencyUpdatedById String?
+  proficiencyUpdatedAt  DateTime?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  user                  User        @relation(fields: [userId], references: [id])
+  proficiencyUpdatedBy  User?       @relation("ProficiencyUpdater", fields: [proficiencyUpdatedById], references: [id])
+}
+
+model ExternalCertificate {
+  id                String    @id @default(uuid())
+  userId            String
+  title             String
+  issuer            String?
+  filePath          String
+  certificateNumber String?
+  issueDate         DateTime?
+  expiryDate        DateTime?
+  verifiedByAdmin   Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  user              User      @relation(fields: [userId], references: [id])
+}
+
+model CandidateRemark {
+  id              String           @id @default(uuid())
+  candidateUserId String
+  authorUserId    String
+  visibility      RemarkVisibility
+  comment         String
+  createdAt       DateTime         @default(now())
+  candidate       User             @relation("RemarkCandidate", fields: [candidateUserId], references: [id])
+  author          User             @relation("RemarkAuthor", fields: [authorUserId], references: [id])
+}
+
+model ProfileAuditLog {
+  id              String   @id @default(uuid())
+  candidateUserId String
+  actorUserId     String
+  fieldName       String
+  oldValue        Json?
+  newValue        Json?
+  changeReason    String?
+  changedAt       DateTime @default(now())
+  candidate       User     @relation("AuditCandidate", fields: [candidateUserId], references: [id])
+  actor           User     @relation("AuditActor", fields: [actorUserId], references: [id])
+}
+
+model ProfileFieldDefinition {
+  id              String   @id @default(uuid())
+  key             String   @unique
+  label           String
+  type            String
+  required        Boolean  @default(false)
+  options         Json?
+  validationRegex String?
+  displayOrder    Int      @default(0)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model QuestionImportJob {
+  id               String   @id @default(uuid())
+  uploadedById     String
+  filename         String
+  importedRowCount Int      @default(0)
+  rejectedRowCount Int      @default(0)
+  createdAt        DateTime @default(now())
+}

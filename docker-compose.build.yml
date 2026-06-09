@@ -1,0 +1,13 @@
+# Build API + web from local source (use instead of pre-built Hub images).
+# Run: npm run docker:up:local
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: cogniverse/assessment-os-api:${IMAGE_TAG:-latest}
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    image: cogniverse/assessment-os-web:${IMAGE_TAG:-latest}
