@@ -32,6 +32,24 @@ export function requireRole(...roles: string[]) {
   };
 }
 
+/** Admins: full access. Capability managers: GET only (catalog reads for assignments). */
+export function requireAdminOrManagerRead(req: Request, res: Response, next: NextFunction) {
+  const user = (req as AuthedRequest).user;
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  if (user.role === Role.ADMIN) {
+    next();
+    return;
+  }
+  if (user.role === Role.CAPABILITY_MANAGER && req.method === "GET") {
+    next();
+    return;
+  }
+  res.status(403).json({ error: "Forbidden" });
+}
+
 export const requireAdmin = [requireAuth, requireRole(Role.ADMIN)] as const;
 export const requireManagerOrAdmin = [
   requireAuth,

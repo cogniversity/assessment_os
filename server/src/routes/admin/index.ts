@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { requireAuth, requireRole, requireAdminOrManagerRead } from "../../middleware/auth.js";
 import { Role } from "@assessment-os/shared";
 import { categoriesRouter } from "./categories.js";
 import { skillsRouter } from "./skills.js";
@@ -12,17 +12,24 @@ import { questionImportRouter } from "./questionImport.js";
 import { blueprintsRouter } from "./blueprints.js";
 import { appidUsersRouter } from "./appidUsers.js";
 import { dataTransferRouter } from "./dataTransfer.js";
+import { managerSkillsRouter } from "./managerSkills.js";
 
 export const adminRouter = Router();
-adminRouter.use(requireAuth, requireRole(Role.ADMIN));
-adminRouter.use("/categories", categoriesRouter);
-adminRouter.use("/skills", skillsRouter);
-adminRouter.use("/topics", topicsRouter);
+adminRouter.use(requireAuth);
+
+// Catalog + export reads — capability managers need these for assign/results
+adminRouter.use("/categories", requireAdminOrManagerRead, categoriesRouter);
+adminRouter.use("/skills", requireAdminOrManagerRead, skillsRouter);
+adminRouter.use("/topics", requireAdminOrManagerRead, topicsRouter);
+adminRouter.use("/blueprints", requireAdminOrManagerRead, blueprintsRouter);
+adminRouter.use("/export", requireAdminOrManagerRead, exportRouter);
+
+// Admin-only
+adminRouter.use(requireRole(Role.ADMIN));
 adminRouter.use("/questions", questionsRouter);
-adminRouter.use("/blueprints", blueprintsRouter);
 adminRouter.use("/users", usersRouter);
 adminRouter.use("/profile-fields", profileFieldsRouter);
-adminRouter.use("/export", exportRouter);
 adminRouter.use("/question-import", questionImportRouter);
 adminRouter.use("/appid-users", appidUsersRouter);
 adminRouter.use("/data-transfer", dataTransferRouter);
+adminRouter.use("/manager-skills", managerSkillsRouter);

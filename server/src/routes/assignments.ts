@@ -6,6 +6,7 @@ import { validateQuestionPool } from "../services/questionSelector.js";
 import { listAssignmentCandidates } from "../services/assignmentCandidates.js";
 import { provisionCandidateUser } from "../services/userProvision.js";
 import { createAssignmentSchema } from "../schemas/createAssignment.js";
+import { getManagerSkillIds } from "../services/managerSkills.js";
 
 export const assignmentsRouter = Router();
 
@@ -47,6 +48,15 @@ assignmentsRouter.post("/", async (req, res, next) => {
     const user = getUser(req);
     const counts = { easy: data.easyCount, medium: data.mediumCount, hard: data.hardCount };
     const questionCount = counts.easy + counts.medium + counts.hard;
+
+    // Validate manager is scoped to this skill
+    if (user.role === Role.CAPABILITY_MANAGER) {
+      const skillIds = await getManagerSkillIds(user.id);
+      if (!skillIds.includes(data.skillId)) {
+        res.status(403).json({ error: "You are not assigned to this skill" });
+        return;
+      }
+    }
 
     // Validate skillRoleId belongs to skillId
     const role = await prisma.skillRole.findUnique({ where: { id: data.skillRoleId } });
@@ -127,7 +137,11 @@ assignmentsRouter.post("/", async (req, res, next) => {
 assignmentsRouter.get("/", async (req, res, next) => {
   try {
     const user = getUser(req);
-    const where = user.role === Role.ADMIN ? {} : { assignedById: user.id };
+    let where = {};
+    if (user.role === Role.CAPABILITY_MANAGER) {
+      const skillIds = await getManagerSkillIds(user.id);
+      where = { skillId: { in: skillIds } };
+    }
     const list = await prisma.assessment.findMany({
       where,
       include: {

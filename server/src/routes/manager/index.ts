@@ -4,16 +4,26 @@ import { Role } from "@assessment-os/shared";
 import { prisma } from "../../db.js";
 import { remarkSchema, proficiencyOverrideSchema } from "@assessment-os/shared";
 import { updateProfile, overrideProficiency, ensureProfile } from "../../services/profileService.js";
+import { getManagerSkillIds } from "../../services/managerSkills.js";
 
 export const managerRouter = Router();
 managerRouter.use(requireAuth, requireRole(Role.ADMIN, Role.CAPABILITY_MANAGER));
 
 managerRouter.get("/candidates", async (req, res) => {
+  const user = (req as { user: { id: string; role: string } }).user;
   const q = (req.query.q as string) || "";
+
+  let assessmentSkillFilter: object | undefined;
+  if (user.role === Role.CAPABILITY_MANAGER) {
+    const skillIds = await getManagerSkillIds(user.id);
+    assessmentSkillFilter = { some: { skillId: { in: skillIds } } };
+  }
+
   res.json(
     await prisma.user.findMany({
       where: {
         role: "candidate",
+        ...(assessmentSkillFilter ? { assessments: assessmentSkillFilter } : {}),
         ...(q && {
           OR: [
             { email: { contains: q, mode: "insensitive" } },
@@ -109,8 +119,11 @@ managerRouter.post("/candidates/:userId/remarks", async (req, res, next) => {
 
 managerRouter.get("/results", async (req, res) => {
   const user = (req as { user: { id: string; role: string } }).user;
-  const where =
-    user.role === Role.ADMIN ? {} : { assignedById: user.id };
+  let where = {};
+  if (user.role === Role.CAPABILITY_MANAGER) {
+    const skillIds = await getManagerSkillIds(user.id);
+    where = { skillId: { in: skillIds } };
+  }
   const attempts = await prisma.assessmentAttempt.findMany({
     where: {
       status: { in: ["completed", "timed_out"] },

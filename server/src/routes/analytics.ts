@@ -2,17 +2,20 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { Role } from "@assessment-os/shared";
 import { prisma } from "../db.js";
+import { getManagerSkillIds } from "../services/managerSkills.js";
 
 export const analyticsRouter = Router();
 analyticsRouter.use(requireAuth, requireRole(Role.ADMIN, Role.CAPABILITY_MANAGER));
 
-function assessmentFilter(user: { id: string; role: string }) {
-  return user.role === Role.ADMIN ? {} : { assignedById: user.id };
+async function assessmentFilter(user: { id: string; role: string }): Promise<object> {
+  if (user.role !== Role.CAPABILITY_MANAGER) return {};
+  const skillIds = await getManagerSkillIds(user.id);
+  return { skillId: { in: skillIds } };
 }
 
 analyticsRouter.get("/summary", async (req, res) => {
   const user = (req as { user: { id: string; role: string } }).user;
-  const af = assessmentFilter(user);
+  const af = await assessmentFilter(user);
   const assessments = await prisma.assessment.count({ where: af });
   const attempts = await prisma.assessmentAttempt.findMany({
     where: {
@@ -39,7 +42,7 @@ analyticsRouter.get("/summary", async (req, res) => {
 
 analyticsRouter.get("/pass-rates", async (req, res) => {
   const user = (req as { user: { id: string; role: string } }).user;
-  const af = assessmentFilter(user);
+  const af = await assessmentFilter(user);
   const topics = await prisma.topic.findMany();
   const data = [];
   for (const topic of topics) {
@@ -62,7 +65,7 @@ analyticsRouter.get("/pass-rates", async (req, res) => {
 
 analyticsRouter.get("/score-distribution", async (req, res) => {
   const user = (req as { user: { id: string; role: string } }).user;
-  const af = assessmentFilter(user);
+  const af = await assessmentFilter(user);
   const attempts = await prisma.assessmentAttempt.findMany({
     where: { status: { in: ["completed", "timed_out"] }, assessment: af },
     select: { score: true },
@@ -80,7 +83,7 @@ analyticsRouter.get("/score-distribution", async (req, res) => {
 
 analyticsRouter.get("/scores-over-time", async (req, res) => {
   const user = (req as { user: { id: string; role: string } }).user;
-  const af = assessmentFilter(user);
+  const af = await assessmentFilter(user);
   const attempts = await prisma.assessmentAttempt.findMany({
     where: { status: { in: ["completed", "timed_out"] }, assessment: af, completedAt: { not: null } },
     select: { score: true, completedAt: true },
@@ -103,7 +106,7 @@ analyticsRouter.get("/scores-over-time", async (req, res) => {
 
 analyticsRouter.get("/status-breakdown", async (req, res) => {
   const user = (req as { user: { id: string; role: string } }).user;
-  const af = assessmentFilter(user);
+  const af = await assessmentFilter(user);
   const statuses = ["assigned", "in_progress", "completed", "expired", "abandoned"] as const;
   const data = await Promise.all(
     statuses.map(async (status) => ({

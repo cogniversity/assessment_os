@@ -7,6 +7,7 @@ import {
   getLatestReattemptRequest,
   reviewReattemptRequest,
 } from "../services/reattemptService.js";
+import { getManagerSkillIds } from "../services/managerSkills.js";
 
 export const reattemptRequestsRouter = Router();
 
@@ -72,9 +73,11 @@ reattemptRequestsRouter.get("/assessments/:assessmentId", async (req, res, next)
       return;
     }
     const isOwner = assessment.userId === user.id;
-    const isStaff =
-      user.role === Role.ADMIN ||
-      (user.role === Role.CAPABILITY_MANAGER && assessment.assignedById === user.id);
+    let isStaff = user.role === Role.ADMIN;
+    if (!isStaff && user.role === Role.CAPABILITY_MANAGER) {
+      const skillIds = await getManagerSkillIds(user.id);
+      isStaff = skillIds.includes(assessment.skillId);
+    }
     if (!isOwner && !isStaff) {
       res.status(403).json({ error: "Forbidden" });
       return;
@@ -94,12 +97,15 @@ managerRouter.get("/", async (req, res, next) => {
   try {
     const user = (req as { user: { id: string; role: string } }).user;
     const status = (req.query.status as string) || "pending";
+    let assessmentScope = {};
+    if (user.role === Role.CAPABILITY_MANAGER) {
+      const skillIds = await getManagerSkillIds(user.id);
+      assessmentScope = { assessment: { skillId: { in: skillIds } } };
+    }
     const list = await prisma.reattemptRequest.findMany({
       where: {
         status: status as "pending" | "approved" | "rejected",
-        ...(user.role === Role.CAPABILITY_MANAGER
-          ? { assessment: { assignedById: user.id } }
-          : {}),
+        ...assessmentScope,
       },
       orderBy: { createdAt: "asc" },
       include: {

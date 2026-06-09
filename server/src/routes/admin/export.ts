@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { stringify } from "csv-stringify/sync";
 import PDFDocument from "pdfkit";
+import { Role } from "@assessment-os/shared";
 import { prisma } from "../../db.js";
+import { getUser } from "../../middleware/auth.js";
+import { getManagerSkillIds } from "../../services/managerSkills.js";
 
 export const exportRouter = Router();
 
@@ -17,13 +20,22 @@ function topicNames(assessment: {
 }
 
 exportRouter.get("/results", async (req, res) => {
+  const user = getUser(req);
   const { topicId, from, to } = req.query;
+  let managerScope = {};
+  if (user.role === Role.CAPABILITY_MANAGER) {
+    const skillIds = await getManagerSkillIds(user.id);
+    managerScope = { skillId: { in: skillIds } };
+  }
   const attempts = await prisma.assessmentAttempt.findMany({
     where: {
       status: { in: ["completed", "timed_out"] },
       ...(from && { completedAt: { gte: new Date(String(from)) } }),
       ...(to && { completedAt: { lte: new Date(String(to)) } }),
-      ...(topicId && { assessment: { topics: { some: { topicId: String(topicId) } } } }),
+      assessment: {
+        ...managerScope,
+        ...(topicId ? { topics: { some: { topicId: String(topicId) } } } : {}),
+      },
     },
     include: {
       assessment: {
@@ -83,6 +95,15 @@ exportRouter.get("/attempt/:attemptId/pdf", async (req, res) => {
   if (!attempt) {
     res.status(404).json({ error: "Not found" });
     return;
+  }
+
+  const user = getUser(req);
+  if (user.role === Role.CAPABILITY_MANAGER) {
+    const skillIds = await getManagerSkillIds(user.id);
+    if (!skillIds.includes(attempt.assessment.skillId)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
   }
 
   const { topics } = topicNames(attempt.assessment);

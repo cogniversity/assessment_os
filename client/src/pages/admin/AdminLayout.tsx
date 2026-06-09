@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { SidebarLayout } from "../../components/Layout";
 import AdminHome from "./AdminHome";
+import ManagerSkillsPage from "./ManagerSkillsPage";
 import CategoriesPage from "./CategoriesPage";
 import SkillsPage from "./SkillsPage";
 import TopicsPage from "./TopicsPage";
@@ -32,6 +33,7 @@ import {
   Cloud,
   UserCircle,
   RotateCcw,
+  ShieldCheck,
 } from "lucide-react";
 
 const navGroups = [
@@ -66,6 +68,7 @@ const navGroups = [
     items: [
       { to: "/admin/users", label: "Users", icon: <Users size={16} /> },
       { to: "/admin/appid-users", label: "App ID Users", icon: <Cloud size={16} /> },
+      { to: "/admin/manager-skills", label: "Manager Skills", icon: <ShieldCheck size={16} /> },
       { to: "/profile", label: "My profile", icon: <UserCircle size={16} /> },
       { to: "/admin/profile-fields", label: "Profile Fields", icon: <Settings size={16} /> },
     ],
@@ -93,6 +96,7 @@ export default function AdminLayout() {
         <Route path="export-import" element={<DataTransferPage />} />
         <Route path="import" element={<DataTransferPage />} />
         <Route path="profile-fields" element={<ProfileFieldsPage />} />
+        <Route path="manager-skills" element={<ManagerSkillsPage />} />
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </SidebarLayout>

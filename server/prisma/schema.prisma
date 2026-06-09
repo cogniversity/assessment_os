@@ -105,6 +105,7 @@ model User {
   createdBlueprints    AssessmentBlueprint[] @relation("BlueprintCreatedBy")
   reattemptRequests    ReattemptRequest[]    @relation("ReattemptCandidate")
   reattemptReviews     ReattemptRequest[]    @relation("ReattemptReviewer")
+  managedSkills        ManagerSkill[]        @relation("ManagerSkills")
 }
 
 model Category {
@@ -127,6 +128,7 @@ model Skill {
   questions   Question[]
   assessments Assessment[]
   blueprints  AssessmentBlueprint[]
+  managers    ManagerSkill[]
 }
 
 // Roles defined per skill — not to be confused with User.role (RBAC)
@@ -468,4 +470,17 @@ model QuestionImportJob {
   importedRowCount Int      @default(0)
   rejectedRowCount Int      @default(0)
   createdAt        DateTime @default(now())
+}
+
+model ManagerSkill {
+  id        String   @id @default(uuid())
+  userId    String
+  skillId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation("ManagerSkills", fields: [userId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillId])
+  @@index([skillId])
 }

@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { blueprintSchema } from "@assessment-os/shared";
+import { blueprintSchema, Role } from "@assessment-os/shared";
 import { prisma } from "../../db.js";
 import { getUser } from "../../middleware/auth.js";
+import { getManagerSkillIds } from "../../services/managerSkills.js";
 
 export const blueprintsRouter = Router();
 
@@ -13,9 +14,15 @@ const includeAll = {
   _count: { select: { assessments: true } },
 } as const;
 
-blueprintsRouter.get("/", async (_req, res, next) => {
+blueprintsRouter.get("/", async (req, res, next) => {
   try {
-    res.json(await prisma.assessmentBlueprint.findMany({ include: includeAll, orderBy: { name: "asc" } }));
+    const user = getUser(req);
+    let where = {};
+    if (user.role === Role.CAPABILITY_MANAGER) {
+      const skillIds = await getManagerSkillIds(user.id);
+      where = { skillId: { in: skillIds } };
+    }
+    res.json(await prisma.assessmentBlueprint.findMany({ where, include: includeAll, orderBy: { name: "asc" } }));
   } catch (e) {
     next(e);
   }
