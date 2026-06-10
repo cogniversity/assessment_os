@@ -47,6 +47,21 @@ function parseSections(raw: unknown): ExportSection[] {
   );
 }
 
+function parseOptionalDate(value: unknown): Date | undefined {
+  if (value == null || value === "") return undefined;
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+function optionalDateFields(row: Record<string, unknown>, keys: readonly string[]): Record<string, Date> {
+  const out: Record<string, Date> = {};
+  for (const key of keys) {
+    const d = parseOptionalDate(row[key]);
+    if (d !== undefined) out[key] = d;
+  }
+  return out;
+}
+
 export function parseExportBundle(raw: unknown): ExportBundle {
   if (!raw || typeof raw !== "object") throw new Error("Invalid bundle: not an object");
   const b = raw as ExportBundle;
@@ -131,8 +146,7 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
         validationRegex: r.validationRegex != null ? String(r.validationRegex) : null,
         displayOrder: Number(r.displayOrder ?? 0),
         active: Boolean(r.active ?? true),
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     ids.set("profileFieldDefinition", String(r.id), created.id);
@@ -155,8 +169,7 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
           name: String(r.name),
           role: r.role as never,
           oidcSub: r.oidcSub != null ? String(r.oidcSub) : null,
-          createdAt: new Date(String(r.createdAt)),
-          updatedAt: new Date(String(r.updatedAt)),
+          ...optionalDateFields(r, ["createdAt", "updatedAt"]),
         },
       });
       ids.set("user", String(r.id), created.id);
@@ -170,8 +183,7 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
           name: String(r.name),
           role: r.role as never,
           oidcSub: r.oidcSub != null ? String(r.oidcSub) : null,
-          createdAt: new Date(String(r.createdAt)),
-          updatedAt: new Date(String(r.updatedAt)),
+          ...optionalDateFields(r, ["createdAt", "updatedAt"]),
         },
       });
       ids.set("user", String(r.id), created.id);
@@ -218,8 +230,7 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
         proficiencyOverridden: Boolean(r.proficiencyOverridden),
         proficiencyUpdatedById,
         proficiencyUpdatedAt: r.proficiencyUpdatedAt ? new Date(String(r.proficiencyUpdatedAt)) : null,
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     ids.set("candidateProfile", String(r.id), created.id);
@@ -247,7 +258,7 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
         issueDate: r.issueDate ? new Date(String(r.issueDate)) : null,
         expiryDate: r.expiryDate ? new Date(String(r.expiryDate)) : null,
         verifiedByAdmin: Boolean(r.verifiedByAdmin),
-        createdAt: new Date(String(r.createdAt)),
+        ...optionalDateFields(r, ["createdAt"]),
       },
     });
     inc("externalCertificates", "imported");
@@ -264,7 +275,7 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
         authorUserId,
         visibility: r.visibility as never,
         comment: String(r.comment),
-        createdAt: new Date(String(r.createdAt)),
+        ...optionalDateFields(r, ["createdAt"]),
       },
     });
     inc("candidateRemarks", "imported");
@@ -306,8 +317,7 @@ async function importTaxonomy(data: Partial<ExportBundleData>, ids: IdMap, selec
         id: String(r.id),
         name,
         description: r.description != null ? String(r.description) : null,
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     ids.set("category", String(r.id), created.id);
@@ -328,8 +338,7 @@ async function importTaxonomy(data: Partial<ExportBundleData>, ids: IdMap, selec
         code,
         name: String(r.name),
         description: r.description != null ? String(r.description) : null,
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     ids.set("skill", String(r.id), created.id);
@@ -359,8 +368,7 @@ async function importTaxonomy(data: Partial<ExportBundleData>, ids: IdMap, selec
         defaultEasyCount: r.defaultEasyCount != null ? Number(r.defaultEasyCount) : null,
         defaultMediumCount: r.defaultMediumCount != null ? Number(r.defaultMediumCount) : null,
         defaultHardCount: r.defaultHardCount != null ? Number(r.defaultHardCount) : null,
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     ids.set("skillRole", String(r.id), created.id);
@@ -388,8 +396,7 @@ async function importTaxonomy(data: Partial<ExportBundleData>, ids: IdMap, selec
         showProficiencyOnCert: Boolean(r.showProficiencyOnCert),
         certValidityDays: Number(r.certValidityDays ?? 0),
         proficiencyThresholds: r.proficiencyThresholds ?? [40, 55, 70, 85, 95],
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     ids.set("topic", String(r.id), created.id);
@@ -421,8 +428,7 @@ async function importQuestions(data: Partial<ExportBundleData>, ids: IdMap, sele
         options: r.options as never,
         correctIndices: r.correctIndices as number[],
         explanation: r.explanation != null ? String(r.explanation) : null,
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     ids.set("question", String(r.id), created.id);
@@ -477,8 +483,7 @@ async function importBlueprints(data: Partial<ExportBundleData>, ids: IdMap, sel
         proctoringPhotoIntervalMinutes: Number(r.proctoringPhotoIntervalMinutes ?? 5),
         proctoringInstructions: r.proctoringInstructions != null ? String(r.proctoringInstructions) : null,
         createdById,
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     ids.set("blueprint", String(r.id), created.id);
@@ -538,8 +543,7 @@ async function importAssignments(data: Partial<ExportBundleData>, ids: IdMap, se
         multiSelectScoringMode: r.multiSelectScoringMode as never,
         proctoringPhotoIntervalMinutes: Number(r.proctoringPhotoIntervalMinutes ?? 5),
         proctoringInstructions: r.proctoringInstructions != null ? String(r.proctoringInstructions) : null,
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     ids.set("assessment", String(r.id), created.id);
@@ -578,8 +582,7 @@ async function importAssignments(data: Partial<ExportBundleData>, ids: IdMap, se
         managerNote: r.managerNote != null ? String(r.managerNote) : null,
         reviewedById,
         reviewedAt: r.reviewedAt ? new Date(String(r.reviewedAt)) : null,
-        createdAt: new Date(String(r.createdAt)),
-        updatedAt: new Date(String(r.updatedAt)),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
     inc("reattemptRequests", "imported");
