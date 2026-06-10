@@ -6,7 +6,7 @@ import { formatAppIdSyncMessage, useAppIdUserSync } from "../../hooks/useAppIdUs
 import { Card, Button, Input, Badge, SectionHeader } from "../../components/Layout";
 import {
   UserPlus, Users, Upload, Search, CheckCircle2,
-  AlertTriangle, X, RefreshCw, Info, Download,
+  AlertTriangle, X, Info, Download,
   Eye, EyeOff, FileText
 } from "lucide-react";
 
@@ -297,17 +297,18 @@ export default function AppIdUsersPage() {
         title="IBM App ID Users"
         description="IBM Cloud Directory accounts. Use Sync to app to create local users (including capability managers) before their first login."
         actions={
-          !notConfigured ? (
-            <Button
-              variant="primary"
-              onClick={syncVisibleUsers}
-              disabled={syncUsers.isPending || listQ.isLoading}
-              title="Create or update local app users from App ID"
-            >
-              <RefreshCw size={16} className={syncUsers.isPending ? "animate-spin" : ""} />
-              {syncUsers.isPending ? "Syncing…" : "Sync to app"}
-            </Button>
-          ) : undefined
+          <Button
+            variant="primary"
+            onClick={syncVisibleUsers}
+            disabled={notConfigured || syncUsers.isPending || listQ.isLoading}
+            title={
+              notConfigured
+                ? "Configure App ID first"
+                : "Create or update local app users from App ID (no login required)"
+            }
+          >
+            {syncUsers.isPending ? "Syncing…" : "Sync to app"}
+          </Button>
         }
       />
 
@@ -360,16 +361,39 @@ export default function AppIdUsersPage() {
           title="Cloud Directory users"
           subtitle={listQ.data ? `${listQ.data.totalResults} total` : undefined}
           actions={
-            <button
-              type="button"
-              onClick={() => qc.invalidateQueries({ queryKey: ["appid-users"] })}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-              title="Refresh App ID list"
-            >
-              <RefreshCw size={15} className={listQ.isFetching ? "animate-spin" : ""} />
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={syncVisibleUsers}
+                disabled={notConfigured || syncUsers.isPending || listQ.isLoading}
+                title="Create local User + profile in Assessment OS from App ID"
+              >
+                {syncUsers.isPending ? "Syncing…" : "Sync to app"}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => qc.invalidateQueries({ queryKey: ["appid-users"] })}
+                disabled={notConfigured || listQ.isFetching}
+                title="Reload IBM directory only — does not create app users"
+              >
+                {listQ.isFetching ? "Loading…" : "Reload App ID list"}
+              </Button>
+            </div>
           }
         >
+          {!notConfigured && (
+            <div className="flex gap-2.5 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-3 text-sm text-indigo-950 mb-4">
+              <Info size={16} className="shrink-0 mt-0.5 text-indigo-600" />
+              <p>
+                <strong>Sync to app</strong> writes users into Assessment OS (Manager Skills, Users, etc.) before their
+                first login. <strong>Reload App ID list</strong> only fetches the IBM directory — it does not create
+                local accounts.
+              </p>
+            </div>
+          )}
+
           {/* Search */}
           <div className="relative mb-4">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />

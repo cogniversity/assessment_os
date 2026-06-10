@@ -158,6 +158,19 @@ export default function ManagerSkillsPage() {
             Assign
           </button>
 
+          <Button
+            variant="secondary"
+            onClick={() => syncUsers.mutate(undefined)}
+            disabled={!appIdConfigured || syncUsers.isPending}
+            title={
+              appIdConfigured
+                ? "Create local app users from App ID (capability managers before first login)"
+                : "Configure APPID_IAM_APIKEY and APPID_TENANT_ID first"
+            }
+          >
+            {syncUsers.isPending ? "Syncing…" : "Sync from App ID"}
+          </Button>
+
           {assign.isError && (
             <p className="text-xs text-red-600 self-center">
               {(assign.error as Error).message}
@@ -170,14 +183,27 @@ export default function ManagerSkillsPage() {
       {isLoading ? (
         <p className="text-sm text-slate-500">Loading…</p>
       ) : managers.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          No Capability Managers in the app yet. Click <strong>Sync from App ID</strong> above (users need the IBM{" "}
-          <strong>Capability_Manager</strong> role in App ID), or assign the role on{" "}
-          <Link to="/admin/appid-users" className="text-indigo-600 hover:underline">
-            App ID Users
-          </Link>
-          .
-        </p>
+        <Card>
+          <p className="text-sm text-slate-600 mb-4">
+            No Capability Managers in the app yet. App ID users are not imported automatically — sync them into
+            Assessment OS first (IBM <strong>Capability_Manager</strong> role required).
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="primary"
+              onClick={() => syncUsers.mutate(undefined)}
+              disabled={!appIdConfigured || syncUsers.isPending}
+            >
+              {syncUsers.isPending ? "Syncing…" : "Sync from App ID"}
+            </Button>
+            <Link
+              to="/admin/appid-users"
+              className="inline-flex items-center px-3.5 py-2 text-sm font-medium text-indigo-600 hover:underline"
+            >
+              Open App ID Users
+            </Link>
+          </div>
+        </Card>
       ) : (
         <div className="space-y-4">
           {byManager.map(({ manager, assignments }) => (
