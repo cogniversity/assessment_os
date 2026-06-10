@@ -3,6 +3,8 @@ import { apiPrefix } from "../config/paths";
 function apiErrorMessage(err: {
   error?: string;
   hint?: string;
+  shortfalls?: string[];
+  available?: { total: number; easy: number; medium: number; hard: number };
   details?: { fieldErrors?: Record<string, string[]>; formErrors?: string[] };
 }): string {
   const parts: string[] = [];
@@ -17,6 +19,12 @@ function apiErrorMessage(err: {
   if (parts.length === 0) {
     parts.push([err.error, err.hint].filter(Boolean).join(" — ") || "Request failed");
   }
+  if (err.available) {
+    parts.push(
+      `Found ${err.available.total} published (${err.available.easy} easy, ${err.available.medium} medium, ${err.available.hard} hard)`
+    );
+  }
+  if (err.shortfalls?.length) parts.push(...err.shortfalls);
   return parts.join("; ");
 }
 

@@ -71,10 +71,18 @@ assignmentsRouter.post("/", async (req, res, next) => {
       counts
     );
     if (!pool.sufficient) {
+      const hint =
+        pool.diagnostics.publishedInTopics > 0 && pool.available.total === 0
+          ? `${pool.diagnostics.publishedInTopics} published question(s) exist in the selected topics, but none are tagged for this skill role. Edit questions in Question Bank and assign skill roles, or re-import with skillRoleCodes.`
+          : pool.diagnostics.publishedWithoutRoles > 0
+            ? `${pool.diagnostics.publishedWithoutRoles} published question(s) in these topics have no skill roles assigned.`
+            : undefined;
       res.status(400).json({
         error: "Insufficient published questions",
+        hint,
         shortfalls: pool.shortfalls,
         available: pool.available,
+        diagnostics: pool.diagnostics,
       });
       return;
     }

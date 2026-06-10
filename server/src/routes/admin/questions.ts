@@ -158,7 +158,11 @@ questionsRouter.delete("/:id", async (req, res, next) => {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    await prisma.question.delete({ where: { id: req.params.id } });
+    await prisma.$transaction([
+      prisma.questionSkillRole.deleteMany({ where: { questionId: req.params.id } }),
+      prisma.attemptAnswer.deleteMany({ where: { questionId: req.params.id } }),
+      prisma.question.delete({ where: { id: req.params.id } }),
+    ]);
     res.json({ ok: true });
   } catch (e) {
     next(e);

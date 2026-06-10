@@ -114,14 +114,32 @@ export interface PoolValidation {
   available: { total: number; easy: number; medium: number; hard: number };
   sufficient: boolean;
   shortfalls: string[];
+  diagnostics: {
+    publishedInTopics: number;
+    publishedWithoutRoles: number;
+  };
 }
+
+type PoolRow = {
+  id: string;
+  stem: string;
+  difficulty: string;
+  createdAt: Date;
+  skillRoles: { skillRoleId: string }[];
+};
 
 type PrismaForPool = {
   question: {
     findMany: (args: {
       where: object;
-      select: { stem: true; difficulty: true; id: true; createdAt: true };
-    }) => Promise<{ id: string; stem: string; difficulty: string; createdAt: Date }[]>;
+      select: {
+        stem: true;
+        difficulty: true;
+        id: true;
+        createdAt: true;
+        skillRoles?: { select: { skillRoleId: true } };
+      };
+    }) => Promise<PoolRow[]>;
   };
 };
 
@@ -140,17 +158,30 @@ export async function validateQuestionPool(
   filters: { skillId: string; topicIds: string[]; skillRoleId: string },
   counts: { easy: number; medium: number; hard: number }
 ): Promise<PoolValidation> {
-  const baseWhere = {
-    skillId:    filters.skillId,
-    topicId:    { in: filters.topicIds },
-    status:     "published" as const,
-    skillRoles: { some: { skillRoleId: filters.skillRoleId } },
+  const topicWhere = {
+    skillId: filters.skillId,
+    topicId: { in: filters.topicIds },
+    status: "published" as const,
   };
 
-  const rows = await prisma.question.findMany({
-    where: baseWhere,
-    select: { id: true, stem: true, difficulty: true, createdAt: true },
+  const allPublished = await prisma.question.findMany({
+    where: topicWhere,
+    select: {
+      id: true,
+      stem: true,
+      difficulty: true,
+      createdAt: true,
+      skillRoles: { select: { skillRoleId: true } },
+    },
   });
+  const publishedInTopics = dedupeQuestionsByStem(allPublished).length;
+  const publishedWithoutRoles = dedupeQuestionsByStem(
+    allPublished.filter((q) => q.skillRoles.length === 0)
+  ).length;
+
+  const rows = allPublished.filter((q) =>
+    q.skillRoles.some((r) => r.skillRoleId === filters.skillRoleId)
+  );
   const unique = dedupeQuestionsByStem(rows);
   const easy = unique.filter((q) => q.difficulty === Difficulty.EASY).length;
   const medium = unique.filter((q) => q.difficulty === Difficulty.MEDIUM).length;
@@ -162,5 +193,10 @@ export async function validateQuestionPool(
   if (medium < counts.medium) shortfalls.push(`need ${counts.medium} medium, have ${medium}`);
   if (hard   < counts.hard)   shortfalls.push(`need ${counts.hard} hard, have ${hard}`);
 
-  return { available: avail, sufficient: shortfalls.length === 0, shortfalls };
+  return {
+    available: avail,
+    sufficient: shortfalls.length === 0,
+    shortfalls,
+    diagnostics: { publishedInTopics, publishedWithoutRoles },
+  };
 }

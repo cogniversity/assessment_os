@@ -137,6 +137,38 @@ export default function AssignmentsPage() {
     enabled: !!form.skillId,
   });
 
+  type PoolCheck = {
+    available: { total: number; easy: number; medium: number; hard: number };
+    sufficient: boolean;
+    shortfalls: string[];
+    diagnostics: { publishedInTopics: number; publishedWithoutRoles: number };
+  };
+
+  const poolCheck = useQuery({
+    queryKey: [
+      "validate-pool",
+      form.skillId,
+      form.skillRoleId,
+      form.topicIds,
+      form.easyCount,
+      form.mediumCount,
+      form.hardCount,
+    ],
+    queryFn: () =>
+      api<PoolCheck>("/assignments/validate-pool", {
+        method: "POST",
+        json: {
+          skillId: form.skillId,
+          skillRoleId: form.skillRoleId,
+          topicIds: form.topicIds,
+          easyCount: parseInt(form.easyCount, 10) || 0,
+          mediumCount: parseInt(form.mediumCount, 10) || 0,
+          hardCount: parseInt(form.hardCount, 10) || 0,
+        },
+      }),
+    enabled: !!form.skillId && !!form.skillRoleId && form.topicIds.length > 0,
+  });
+
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(""), 4000);
@@ -493,6 +525,43 @@ export default function AssignmentsPage() {
                   <p className="text-xs text-slate-500 mt-2">Total: <strong>{totalQ} questions</strong></p>
                 )}
               </div>
+              {poolCheck.isFetching && (
+                <p className="text-xs text-slate-500">Checking question pool…</p>
+              )}
+              {poolCheck.data && (
+                <div
+                  className={`rounded-lg border px-3 py-2.5 text-xs ${
+                    poolCheck.data.sufficient
+                      ? "bg-green-50 border-green-200 text-green-800"
+                      : "bg-amber-50 border-amber-200 text-amber-900"
+                  }`}
+                >
+                  <p className="font-medium">
+                    Published pool: {poolCheck.data.available.total} question
+                    {poolCheck.data.available.total !== 1 ? "s" : ""} (
+                    {poolCheck.data.available.easy} easy, {poolCheck.data.available.medium} medium,{" "}
+                    {poolCheck.data.available.hard} hard)
+                  </p>
+                  {!poolCheck.data.sufficient && poolCheck.data.shortfalls.length > 0 && (
+                    <p className="mt-1">Shortfall: {poolCheck.data.shortfalls.join("; ")}</p>
+                  )}
+                  {poolCheck.data.diagnostics.publishedInTopics > 0 &&
+                    poolCheck.data.available.total === 0 && (
+                      <p className="mt-1">
+                        {poolCheck.data.diagnostics.publishedInTopics} published in selected topics, but none
+                        match this skill role. Tag questions in Question Bank (pencil icon) or re-import with
+                        skillRoleCodes.
+                      </p>
+                    )}
+                  {poolCheck.data.diagnostics.publishedWithoutRoles > 0 && (
+                    <p className="mt-1">
+                      {poolCheck.data.diagnostics.publishedWithoutRoles} published question
+                      {poolCheck.data.diagnostics.publishedWithoutRoles !== 1 ? "s" : ""} in these topics
+                      have no skill roles.
+                    </p>
+                  )}
+                </div>
+              )}
               <div>
                 <FieldLabel label="Time limit" />
                 <div className="relative">

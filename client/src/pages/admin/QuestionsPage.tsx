@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { api } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { Pencil, Trash2 } from "lucide-react";
 import { Card, Button, Input, Select } from "../../components/Layout";
 
 interface SkillRole {
@@ -48,6 +49,8 @@ export default function QuestionsPage() {
   const { user } = useAuth();
   const isManager = user?.role === "capability_manager";
   const [toast, setToast] = useState("");
+  const [editingRolesId, setEditingRolesId] = useState<string | null>(null);
+  const [editingRoleIds, setEditingRoleIds] = useState<string[]>([]);
   const [filters, setFilters] = useState({ topicId: "", skillId: "", status: "", skillRoleId: "", difficulty: "" });
   const [form, setForm] = useState({
     topicId: "",
@@ -102,6 +105,13 @@ export default function QuestionsPage() {
   const questions = useQuery({
     queryKey: ["questions", filters],
     queryFn: () => api<Question[]>(`/admin/questions?${qParams}`),
+  });
+
+  const editingQuestion = questions.data?.find((q) => q.id === editingRolesId);
+  const editSkillRoles = useQuery({
+    queryKey: ["skill-roles", editingQuestion?.skill.id],
+    queryFn: () => api<SkillRole[]>(`/admin/skills/${editingQuestion!.skill.id}/roles`),
+    enabled: !!editingQuestion?.skill.id,
   });
 
   function showToast(msg: string) {
@@ -165,6 +175,29 @@ export default function QuestionsPage() {
     },
   });
 
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/admin/questions/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["questions"] });
+      showToast("Question deleted");
+    },
+  });
+
+  const updateRoles = useMutation({
+    mutationFn: ({ id, skillRoleIds }: { id: string; skillRoleIds: string[] }) =>
+      api<Question>(`/admin/questions/${id}`, { method: "PUT", json: { skillRoleIds } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["questions"] });
+      setEditingRolesId(null);
+      showToast("Skill roles updated");
+    },
+  });
+
+  function startEditRoles(q: Question) {
+    setEditingRolesId(q.id);
+    setEditingRoleIds(q.skillRoles.map((r) => r.skillRole.id));
+  }
+
   const publishAll = () => {
     const drafts = questions.data?.filter((q) => q.status === "draft") ?? [];
     for (const q of drafts) publish.mutate(q.id);
@@ -205,8 +238,9 @@ export default function QuestionsPage() {
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
         <strong>How it works:</strong> Questions are tagged to a Topic, Skill, and one or more Skill Roles.
+        Assignments only draw <strong>published</strong> questions that match the skill, topics, <strong>and skill role</strong> you pick.
+        Questions without skill roles will not appear in any assessment pool.
         Use <strong>single</strong> for one correct answer, or <strong>multi</strong> for select-all-that-apply.
-        Multi-select scoring (all-or-nothing vs partial credit) is configured on the assessment blueprint.
       </div>
 
       <Card title="Filter questions">
@@ -248,8 +282,10 @@ export default function QuestionsPage() {
                   <div className="flex flex-wrap gap-2 mb-1">
                     <StatusBadge status={q.status} />
                     <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">{q.questionType}</span>
-                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                      {q.skillRoles.map((r) => r.skillRole.code).join(", ")}
+                    <span className={`text-xs px-2 py-0.5 rounded ${q.skillRoles.length === 0 ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}>
+                      {q.skillRoles.length === 0
+                        ? "No skill roles"
+                        : q.skillRoles.map((r) => r.skillRole.code).join(", ")}
                     </span>
                     <span className={`text-xs px-2 py-0.5 rounded ${q.difficulty === "hard" ? "bg-red-100 text-red-700" : q.difficulty === "medium" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>{q.difficulty}</span>
                   </div>
@@ -261,6 +297,36 @@ export default function QuestionsPage() {
                       </li>
                     ))}
                   </ol>
+                  {editingRolesId === q.id && (
+                    <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                      <label className="text-xs text-slate-600 block">
+                        Skill roles (hold Ctrl/Cmd to multi-select)
+                      </label>
+                      <Select
+                        multiple
+                        className="h-24 w-full"
+                        value={editingRoleIds}
+                        onChange={(e) =>
+                          setEditingRoleIds(Array.from(e.target.selectedOptions, (o) => o.value))
+                        }
+                      >
+                        {editSkillRoles.data?.map((r) => (
+                          <option key={r.id} value={r.id}>{r.code} – {r.name}</option>
+                        ))}
+                      </Select>
+                      <div className="flex gap-2">
+                        <Button
+                          disabled={editingRoleIds.length === 0 || updateRoles.isPending}
+                          onClick={() => updateRoles.mutate({ id: q.id, skillRoleIds: editingRoleIds })}
+                        >
+                          Save roles
+                        </Button>
+                        <Button variant="secondary" onClick={() => setEditingRolesId(null)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-1 shrink-0">
                   {q.status === "draft" ? (
@@ -272,6 +338,25 @@ export default function QuestionsPage() {
                       Unpublish
                     </Button>
                   )}
+                  <Button
+                    variant="secondary"
+                    onClick={() => (editingRolesId === q.id ? setEditingRolesId(null) : startEditRoles(q))}
+                    title="Edit skill roles"
+                  >
+                    <Pencil size={14} />
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={remove.isPending}
+                    onClick={() => {
+                      const preview = q.stem.length > 60 ? `${q.stem.slice(0, 60)}…` : q.stem;
+                      if (confirm(`Delete this question?\n\n"${preview}"`)) {
+                        remove.mutate(q.id);
+                      }
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </Button>
                 </div>
               </div>
             ))}

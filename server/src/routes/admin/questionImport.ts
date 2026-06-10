@@ -168,7 +168,7 @@ async function validateRows(rows: Record<string, string>[]) {
         questionType,
         correctIndices: parsedCorrect.indices,
         explanation: row.explanation || null,
-        status: row.status === "published" ? "published" : "draft",
+        status: (row.status || "").toLowerCase() === "published" ? "published" : "draft",
       },
     });
   });
