@@ -54,6 +54,9 @@ export default function QuestionsPage() {
   const [editingRoleIds, setEditingRoleIds] = useState<string[]>([]);
   const [filters, setFilters] = useState({ topicId: "", skillId: "", status: "", skillRoleId: "", difficulty: "" });
   const [missingRolesOnly, setMissingRolesOnly] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkRoleIds, setBulkRoleIds] = useState<string[]>([]);
+  const [showBulkRoles, setShowBulkRoles] = useState(false);
   const [form, setForm] = useState({
     topicId: "",
     skillId: "",
@@ -206,9 +209,76 @@ export default function QuestionsPage() {
     setEditingRoleIds(q.skillRoles.map((r) => r.skillRole.id));
   }
 
-  const publishAll = () => {
-    const drafts = questions.data?.filter((q) => q.status === "draft") ?? [];
-    for (const q of drafts) publish.mutate(q.id);
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function toggleSelectAllVisible() {
+    if (allVisibleSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !visibleQuestions.some((q) => q.id === id)));
+    } else {
+      const ids = new Set(selectedIds);
+      visibleQuestions.forEach((q) => ids.add(q.id));
+      setSelectedIds([...ids]);
+    }
+  }
+
+  const bulkPublish = useMutation({
+    mutationFn: (questionIds: string[]) =>
+      api<{ published: number; skipped: number }>("/admin/questions/bulk/publish", {
+        method: "POST",
+        json: { questionIds },
+      }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["questions"] });
+      setSelectedIds([]);
+      showToast(`Published ${data.published} question${data.published !== 1 ? "s" : ""}${data.skipped ? ` (${data.skipped} already published)` : ""}`);
+    },
+  });
+
+  const bulkAssignRoles = useMutation({
+    mutationFn: (body: { questionIds: string[]; skillRoleIds: string[]; mode: "replace" | "add" }) =>
+      api<{ updated: number }>("/admin/questions/bulk/skill-roles", { method: "POST", json: body }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["questions"] });
+      setSelectedIds([]);
+      setBulkRoleIds([]);
+      setShowBulkRoles(false);
+      showToast(`Updated skill roles on ${data.updated} question${data.updated !== 1 ? "s" : ""}`);
+    },
+  });
+
+  const publishVisibleDrafts = () => {
+    if (visibleDraftIds.length === 0) return;
+    bulkPublish.mutate(visibleDraftIds);
+  };
+
+  const publishSelectedDrafts = () => {
+    const ids = selectedQuestions.filter((q) => q.status === "draft").map((q) => q.id);
+    if (ids.length === 0) {
+      showToast("No draft questions in selection");
+      return;
+    }
+    bulkPublish.mutate(ids);
+  };
+
+  const assignRolesToSelected = (mode: "replace" | "add") => {
+    if (selectedIds.length === 0 || bulkRoleIds.length === 0) return;
+    if (selectedSkillIds.size > 1) {
+      showToast("Select questions from one skill only, or filter by skill first");
+      return;
+    }
+    bulkAssignRoles.mutate({ questionIds: selectedIds, skillRoleIds: bulkRoleIds, mode });
+  };
+
+  const assignRolesToVisibleMissing = () => {
+    const ids = visibleQuestions.filter((q) => q.skillRoles.length === 0).map((q) => q.id);
+    if (ids.length === 0 || bulkRoleIds.length === 0) return;
+    if (!filters.skillId) {
+      showToast("Filter by skill first so roles apply to one skill");
+      return;
+    }
+    bulkAssignRoles.mutate({ questionIds: ids, skillRoleIds: bulkRoleIds, mode: "replace" });
   };
 
   const visibleQuestions = useMemo(() => {
@@ -218,6 +288,23 @@ export default function QuestionsPage() {
   }, [questions.data, missingRolesOnly]);
 
   const missingRolesCount = questions.data?.filter((q) => q.skillRoles.length === 0).length ?? 0;
+
+  const selectedQuestions = visibleQuestions.filter((q) => selectedIds.includes(q.id));
+  const selectedSkillIds = new Set(selectedQuestions.map((q) => q.skill.id));
+  const bulkSkillId =
+    selectedSkillIds.size === 1
+      ? selectedQuestions[0]?.skill.id
+      : filters.skillId || undefined;
+
+  const bulkSkillRoles = useQuery({
+    queryKey: ["skill-roles", bulkSkillId],
+    queryFn: () => api<SkillRole[]>(`/admin/skills/${bulkSkillId}/roles`),
+    enabled: !!bulkSkillId && showBulkRoles,
+  });
+
+  const visibleDraftIds = visibleQuestions.filter((q) => q.status === "draft").map((q) => q.id);
+  const allVisibleSelected =
+    visibleQuestions.length > 0 && visibleQuestions.every((q) => selectedIds.includes(q.id));
 
   const grouped = visibleQuestions.reduce<Record<string, Question[]>>((acc, q) => {
     const key = `${q.topic.name} · ${q.skill.name}`;
@@ -260,10 +347,132 @@ export default function QuestionsPage() {
       {missingRolesCount > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900">
           <strong>{missingRolesCount} question{missingRolesCount !== 1 ? "s" : ""} missing skill roles.</strong>{" "}
-          Click <strong>Assign roles</strong> on each row, or enable the filter below. If the role list is empty, add roles
-          first on the <Link to="/admin/skills" className="underline font-medium">Skills</Link> page.
+          Use bulk actions below, or <strong>Assign roles</strong> per row. Add roles on{" "}
+          <Link to="/admin/skills" className="underline font-medium">Skills</Link> if none exist for that skill.
         </div>
       )}
+
+      <Card title="Bulk actions">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer mr-2">
+            <input
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+              className="rounded border-slate-300 accent-indigo-600"
+            />
+            Select all visible ({visibleQuestions.length})
+          </label>
+          {selectedIds.length > 0 && (
+            <span className="text-xs text-indigo-700 font-medium">{selectedIds.length} selected</span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <Button
+            variant="secondary"
+            disabled={bulkPublish.isPending || visibleDraftIds.length === 0}
+            onClick={publishVisibleDrafts}
+          >
+            Publish all visible drafts ({visibleDraftIds.length})
+          </Button>
+          <Button
+            variant="primary"
+            disabled={bulkPublish.isPending || selectedQuestions.filter((q) => q.status === "draft").length === 0}
+            onClick={publishSelectedDrafts}
+          >
+            Publish selected drafts
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowBulkRoles((v) => !v);
+              if (!showBulkRoles && bulkSkillId && filterSkillRoles.data) {
+                setBulkRoleIds([]);
+              }
+            }}
+          >
+            {showBulkRoles ? "Hide role picker" : "Assign skill roles in bulk"}
+          </Button>
+        </div>
+        {showBulkRoles && (
+          <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-3">
+            {!bulkSkillId && (
+              <p className="text-xs text-amber-800">
+                Filter by <strong>skill</strong> or select questions from a single skill to pick roles.
+              </p>
+            )}
+            {bulkSkillId && bulkSkillRoles.isLoading && (
+              <p className="text-xs text-slate-500">Loading roles…</p>
+            )}
+            {bulkSkillId && !bulkSkillRoles.isLoading && (bulkSkillRoles.data?.length ?? 0) === 0 && (
+              <p className="text-xs text-amber-800">
+                No roles for this skill — add them on <Link to="/admin/skills" className="underline">Skills</Link>.
+              </p>
+            )}
+            {bulkSkillId && (bulkSkillRoles.data?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {bulkSkillRoles.data!.map((r) => (
+                  <label key={r.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={bulkRoleIds.includes(r.id)}
+                      onChange={(e) =>
+                        setBulkRoleIds((prev) =>
+                          e.target.checked ? [...prev, r.id] : prev.filter((id) => id !== r.id)
+                        )
+                      }
+                      className="rounded border-slate-300 accent-indigo-600"
+                    />
+                    <span className="font-mono text-xs text-indigo-700">{r.code}</span>
+                    <span className="text-slate-700">{r.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={
+                  bulkAssignRoles.isPending ||
+                  selectedIds.length === 0 ||
+                  bulkRoleIds.length === 0 ||
+                  selectedSkillIds.size > 1
+                }
+                onClick={() => assignRolesToSelected("replace")}
+              >
+                Set roles on selected ({selectedIds.length})
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={
+                  bulkAssignRoles.isPending ||
+                  selectedIds.length === 0 ||
+                  bulkRoleIds.length === 0 ||
+                  selectedSkillIds.size > 1
+                }
+                onClick={() => assignRolesToSelected("add")}
+              >
+                Add roles to selected
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={
+                  bulkAssignRoles.isPending ||
+                  bulkRoleIds.length === 0 ||
+                  !filters.skillId ||
+                  visibleQuestions.filter((q) => q.skillRoles.length === 0).length === 0
+                }
+                onClick={assignRolesToVisibleMissing}
+              >
+                Set roles on all visible missing roles (
+                {visibleQuestions.filter((q) => q.skillRoles.length === 0).length})
+              </Button>
+            </div>
+            {bulkAssignRoles.isError && (
+              <p className="text-xs text-red-600">{(bulkAssignRoles.error as Error).message}</p>
+            )}
+          </div>
+        )}
+      </Card>
 
       <Card title="Filter questions">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
@@ -307,14 +516,6 @@ export default function QuestionsPage() {
         </label>
       </Card>
 
-      {(questions.data?.filter((q) => q.status === "draft").length ?? 0) > 0 && (
-        <div className="flex justify-end">
-          <Button onClick={publishAll}>
-            Publish all {questions.data?.filter((q) => q.status === "draft").length} drafts
-          </Button>
-        </div>
-      )}
-
       {visibleQuestions.length === 0 && !questions.isLoading && (
         <p className="text-sm text-slate-500">
           {missingRolesOnly ? "No questions missing skill roles." : "No questions match these filters."}
@@ -326,6 +527,13 @@ export default function QuestionsPage() {
           <div className="divide-y">
             {qs.map((q) => (
               <div key={q.id} className="py-3 flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(q.id)}
+                  onChange={() => toggleSelected(q.id)}
+                  className="mt-1 rounded border-slate-300 accent-indigo-600 shrink-0"
+                  aria-label="Select question"
+                />
                 <div className="flex-1">
                   <div className="flex flex-wrap gap-2 mb-1">
                     <StatusBadge status={q.status} />

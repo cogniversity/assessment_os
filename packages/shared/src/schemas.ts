@@ -91,6 +91,17 @@ export const questionSchema = questionFieldsSchema.superRefine(refineQuestionAns
 /** Partial update — ZodEffects from superRefine has no .partial(); use this on PUT */
 export const questionUpdateSchema = questionFieldsSchema.partial().superRefine(refineQuestionAnswerRules);
 
+export const questionBulkPublishSchema = z.object({
+  questionIds: z.array(z.string().uuid()).min(1),
+});
+
+export const questionBulkSkillRolesSchema = z.object({
+  questionIds: z.array(z.string().uuid()).min(1),
+  skillRoleIds: z.array(z.string().uuid()).min(1),
+  /** replace = set roles exactly; add = merge with existing roles */
+  mode: z.enum(["replace", "add"]).default("replace"),
+});
+
 // Certificate / pass-mark fields shared by both blueprint and assignment schemas
 const certPassFields = {
   passMark:               z.number().int().min(0).max(100).default(60),

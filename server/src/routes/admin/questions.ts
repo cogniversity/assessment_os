@@ -1,5 +1,11 @@
 import { Router } from "express";
-import { questionSchema, questionUpdateSchema, Role } from "@assessment-os/shared";
+import {
+  questionSchema,
+  questionUpdateSchema,
+  questionBulkPublishSchema,
+  questionBulkSkillRolesSchema,
+  Role,
+} from "@assessment-os/shared";
 import { prisma } from "../../db.js";
 import { getUser } from "../../middleware/auth.js";
 import {
@@ -80,6 +86,97 @@ questionsRouter.post("/", async (req, res, next) => {
         include: includeRoles,
       })
     );
+  } catch (e) {
+    next(e);
+  }
+});
+
+questionsRouter.post("/bulk/publish", async (req, res, next) => {
+  try {
+    const user = getUser(req);
+    const { questionIds } = questionBulkPublishSchema.parse(req.body);
+    const rows = await prisma.question.findMany({
+      where: { id: { in: questionIds } },
+      select: { id: true, skillId: true, topicId: true, status: true },
+    });
+    if (rows.length !== questionIds.length) {
+      res.status(400).json({ error: "One or more questionIds not found" });
+      return;
+    }
+    let published = 0;
+    let skipped = 0;
+    for (const row of rows) {
+      if (!(await assertQuestionAccess(user.id, user.role, row.skillId, row.topicId))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (row.status === "published") {
+        skipped++;
+        continue;
+      }
+      await prisma.question.update({
+        where: { id: row.id },
+        data: { status: "published" },
+      });
+      published++;
+    }
+    res.json({ published, skipped, total: rows.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+questionsRouter.post("/bulk/skill-roles", async (req, res, next) => {
+  try {
+    const user = getUser(req);
+    const { questionIds, skillRoleIds, mode } = questionBulkSkillRolesSchema.parse(req.body);
+    const rows = await prisma.question.findMany({
+      where: { id: { in: questionIds } },
+      include: { skillRoles: { select: { skillRoleId: true } } },
+    });
+    if (rows.length !== questionIds.length) {
+      res.status(400).json({ error: "One or more questionIds not found" });
+      return;
+    }
+
+    const skillIds = new Set(rows.map((r) => r.skillId));
+    if (skillIds.size !== 1) {
+      res.status(400).json({ error: "All questions in a bulk role update must belong to the same skill" });
+      return;
+    }
+    const skillId = rows[0]!.skillId;
+
+    for (const row of rows) {
+      if (!(await assertQuestionAccess(user.id, user.role, row.skillId, row.topicId))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
+
+    const roles = await prisma.skillRole.findMany({ where: { id: { in: skillRoleIds } } });
+    if (roles.length !== skillRoleIds.length || roles.some((r) => r.skillId !== skillId)) {
+      res.status(400).json({ error: "One or more skillRoleIds do not belong to the questions' skill" });
+      return;
+    }
+
+    let updated = 0;
+    await prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        const targetRoleIds =
+          mode === "add"
+            ? [...new Set([...row.skillRoles.map((r) => r.skillRoleId), ...skillRoleIds])]
+            : skillRoleIds;
+        await tx.questionSkillRole.deleteMany({ where: { questionId: row.id } });
+        if (targetRoleIds.length > 0) {
+          await tx.questionSkillRole.createMany({
+            data: targetRoleIds.map((skillRoleId) => ({ questionId: row.id, skillRoleId })),
+          });
+        }
+        updated++;
+      }
+    });
+
+    res.json({ updated, mode, skillRoleIds });
   } catch (e) {
     next(e);
   }
