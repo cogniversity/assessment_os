@@ -31,10 +31,30 @@ export function decodeJwtPayload(token: string): Record<string, unknown> | undef
   }
 }
 
-function matchesRoleName(configured: string[], appIdRoles: string[]): boolean {
+export function matchesRoleName(configured: string[], appIdRoles: string[]): boolean {
   if (!configured.length || !appIdRoles.length) return false;
   const lower = appIdRoles.map((r) => r.toLowerCase());
   return configured.some((name) => lower.includes(name.toLowerCase()));
+}
+
+/** Whether a user may appear in the assessment assignment candidate picker. */
+export function isAssignmentEligible(opts: {
+  localRole?: string | null;
+  appIdRoles?: string[];
+}): boolean {
+  const { localRole, appIdRoles = [] } = opts;
+
+  if (localRole === Role.ADMIN) return false;
+  if (matchesRoleName(config.appIdRoleAdmin, appIdRoles)) return false;
+
+  if (localRole === Role.CANDIDATE || localRole === Role.CAPABILITY_MANAGER) return true;
+  if (matchesRoleName(config.appIdRoleCandidate, appIdRoles)) return true;
+  if (matchesRoleName(config.appIdRoleManager, appIdRoles)) return true;
+
+  // Unlinked Cloud Directory user with no admin IBM role
+  if (!localRole) return true;
+
+  return false;
 }
 
 /**

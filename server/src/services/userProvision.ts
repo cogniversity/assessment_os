@@ -12,6 +12,10 @@ export async function provisionCandidateUser(opts: {
   const existing = await prisma.user.findUnique({ where: { email: normalized } });
   if (existing && existing.role !== "candidate") {
     if (opts.assignOnly) {
+      if (existing.role === "capability_manager") {
+        await ensureProfile(existing.id);
+        return existing;
+      }
       throw new Error(
         `User ${normalized} is registered as ${existing.role.replace("_", " ")} and cannot receive assessments as a candidate.`
       );

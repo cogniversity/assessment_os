@@ -280,10 +280,10 @@ The **Assign** wizard (Admin and Capability Manager — shared `AssignmentsPage`
 | Aspect | Behavior |
 |--------|----------|
 | **API** | `GET /api/assignments/candidates?q=` — available to `admin` and `capability_manager` (same auth as `POST /api/assignments`) |
-| **Local rows** | All `User` records with app role `candidate`, optionally filtered by `q` |
+| **Local rows** | All `User` records with app role `candidate` or `capability_manager`, optionally filtered by `q` |
 | **IBM App ID rows** | When `APPID_IAM_APIKEY` + `APPID_TENANT_ID` are set, Cloud Directory users from `listCdUsersEnriched` (search API if `q` present; otherwise directory/profiles export — same fallbacks as App ID Users admin page) |
 | **Merge rule** | One row per normalized email; if both exist → **linked** (single checkbox) |
-| **Excluded** | Cloud Directory users whose linked local `User.role` is `admin` or `capability_manager` (cannot receive candidate assignments) |
+| **Excluded** | Users whose linked local `User.role` is `admin`, or whose IBM App ID roles map to admin (`APPID_ROLE_ADMIN`) |
 
 **Search (`q`, debounced in UI ~300ms):**
 
@@ -304,8 +304,8 @@ The **Assign** wizard (Admin and Capability Manager — shared `AssignmentsPage`
 
 | Field | Purpose |
 |-------|---------|
-| `userIds[]` | Existing local candidate UUIDs |
-| `provisionCandidates[]` | Optional `{ email, name? }[]` — creates/updates local `User` as `candidate` + empty staffing profile (`provisionCandidateUser`), then assigns; rejects if email is already admin/manager |
+| `userIds[]` | Existing local candidate or capability_manager UUIDs |
+| `provisionCandidates[]` | Optional `{ email, name? }[]` — creates/updates local `User` as `candidate` + empty staffing profile (`provisionCandidateUser`), then assigns; rejects if email is already `admin`; returns existing `capability_manager` without role change |
 
 **Relationship to other flows:**
 
@@ -314,7 +314,7 @@ flowchart LR
   CD[IBM Cloud Directory]
   OIDC[OIDC login]
   Prov[POST /admin/users/provision\nor assign-time provision]
-  DB[(Local User role=candidate)]
+  DB[(Local User candidate or manager)]
   Assign[POST /assignments]
 
   CD -->|email match| OIDC
@@ -326,8 +326,8 @@ flowchart LR
 ```
 
 - **App ID Users** (`/admin/appid-users`) remains the place to create CD users, edit IBM roles, and **Manage staffing profile** before first login.
-- **Admin → Users** lists app accounts after login or provision; app role `candidate` is required to appear in the assign picker’s local leg.
-- **IBM App ID “Candidate” role** still maps app RBAC on login only; the assign picker does **not** filter by IBM role — it lists directory users unless excluded by linked admin/manager app role.
+- **Admin → Users** lists app accounts after login or provision; app role `candidate` or `capability_manager` appears in the assign picker’s local leg.
+- **IBM App ID roles** (`Candidate`, `Capability_Manager`, etc.) inform eligibility when merging directory users; `admin` (local or IBM) is excluded.
 
 **Implementation files:** `server/src/services/assignmentCandidates.ts`, `server/src/services/userProvision.ts`, `server/src/routes/assignments.ts`, `client/src/pages/admin/AssignmentsPage.tsx`, `packages/shared/src/schemas.ts` (`provisionCandidates` on `assignmentSchema`).
 
