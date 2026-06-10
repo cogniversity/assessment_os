@@ -1,5 +1,24 @@
 import { apiPrefix } from "../config/paths";
 
+async function readJsonResponse<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith("<!") || trimmed.startsWith("<html")) {
+    throw new Error(
+      `API returned HTML instead of JSON (${res.status}). ` +
+        `Expected ${apiPrefix} on the same host — is the API server running and proxied correctly?`
+    );
+  }
+  if (!trimmed) {
+    throw new Error(`Empty API response (${res.status})`);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Invalid API response (${res.status}): ${text.slice(0, 160)}`);
+  }
+}
+
 function apiErrorMessage(err: {
   error?: string;
   hint?: string;
@@ -45,11 +64,16 @@ export async function api<T>(
     credentials: "include",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
+    let err: Parameters<typeof apiErrorMessage>[0];
+    try {
+      err = await readJsonResponse(res);
+    } catch (e) {
+      throw e instanceof Error ? e : new Error(res.statusText || "Request failed");
+    }
     throw new Error(apiErrorMessage(err));
   }
   if (res.status === 204) return undefined as T;
-  return res.json();
+  return readJsonResponse<T>(res);
 }
 
 export async function apiForm<T>(path: string, formData: FormData): Promise<T> {
@@ -59,10 +83,15 @@ export async function apiForm<T>(path: string, formData: FormData): Promise<T> {
     credentials: "include",
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
+    let err: Parameters<typeof apiErrorMessage>[0];
+    try {
+      err = await readJsonResponse(res);
+    } catch (e) {
+      throw e instanceof Error ? e : new Error(res.statusText || "Request failed");
+    }
     throw new Error(apiErrorMessage(err));
   }
-  return res.json();
+  return readJsonResponse<T>(res);
 }
 
 export function downloadUrl(path: string) {

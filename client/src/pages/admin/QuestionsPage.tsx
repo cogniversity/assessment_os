@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { Pencil, Trash2 } from "lucide-react";
@@ -52,6 +53,7 @@ export default function QuestionsPage() {
   const [editingRolesId, setEditingRolesId] = useState<string | null>(null);
   const [editingRoleIds, setEditingRoleIds] = useState<string[]>([]);
   const [filters, setFilters] = useState({ topicId: "", skillId: "", status: "", skillRoleId: "", difficulty: "" });
+  const [missingRolesOnly, setMissingRolesOnly] = useState(false);
   const [form, setForm] = useState({
     topicId: "",
     skillId: "",
@@ -93,6 +95,12 @@ export default function QuestionsPage() {
     queryKey: ["skill-roles", form.skillId],
     queryFn: () => api<SkillRole[]>(`/admin/skills/${form.skillId}/roles`),
     enabled: !!form.skillId,
+  });
+
+  const filterSkillRoles = useQuery({
+    queryKey: ["skill-roles", filters.skillId],
+    queryFn: () => api<SkillRole[]>(`/admin/skills/${filters.skillId}/roles`),
+    enabled: !!filters.skillId,
   });
 
   const parsedOptions = useMemo(
@@ -203,13 +211,19 @@ export default function QuestionsPage() {
     for (const q of drafts) publish.mutate(q.id);
   };
 
-  const grouped = questions.data
-    ? questions.data.reduce<Record<string, Question[]>>((acc, q) => {
-        const key = `${q.topic.name} · ${q.skill.name}`;
-        (acc[key] = acc[key] || []).push(q);
-        return acc;
-      }, {})
-    : {};
+  const visibleQuestions = useMemo(() => {
+    const rows = questions.data ?? [];
+    if (!missingRolesOnly) return rows;
+    return rows.filter((q) => q.skillRoles.length === 0);
+  }, [questions.data, missingRolesOnly]);
+
+  const missingRolesCount = questions.data?.filter((q) => q.skillRoles.length === 0).length ?? 0;
+
+  const grouped = visibleQuestions.reduce<Record<string, Question[]>>((acc, q) => {
+    const key = `${q.topic.name} · ${q.skill.name}`;
+    (acc[key] = acc[key] || []).push(q);
+    return acc;
+  }, {});
 
   const canCreate =
     form.topicId &&
@@ -237,21 +251,40 @@ export default function QuestionsPage() {
       )}
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
-        <strong>How it works:</strong> Questions are tagged to a Topic, Skill, and one or more Skill Roles.
-        Assignments only draw <strong>published</strong> questions that match the skill, topics, <strong>and skill role</strong> you pick.
-        Questions without skill roles will not appear in any assessment pool.
-        Use <strong>single</strong> for one correct answer, or <strong>multi</strong> for select-all-that-apply.
+        <strong>How it works:</strong> Every question needs at least one <strong>skill role</strong> (e.g. ASSOC, SR_DEV) in
+        addition to topic and skill. Roles are defined per skill under{" "}
+        <Link to="/admin/skills" className="underline font-medium">Skills</Link>.
+        Assignments only count published questions that match skill + topics + skill role.
       </div>
+
+      {missingRolesCount > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900">
+          <strong>{missingRolesCount} question{missingRolesCount !== 1 ? "s" : ""} missing skill roles.</strong>{" "}
+          Click <strong>Assign roles</strong> on each row, or enable the filter below. If the role list is empty, add roles
+          first on the <Link to="/admin/skills" className="underline font-medium">Skills</Link> page.
+        </div>
+      )}
 
       <Card title="Filter questions">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-          <Select value={filters.skillId} onChange={(e) => setFilters({ ...filters, skillId: e.target.value })}>
+          <Select
+            value={filters.skillId}
+            onChange={(e) => setFilters({ ...filters, skillId: e.target.value, skillRoleId: "" })}
+          >
             <option value="">All skills</option>
             {skills.data?.map((s) => <option key={s.id} value={s.id}>{s.code} – {s.name}</option>)}
           </Select>
           <Select value={filters.topicId} onChange={(e) => setFilters({ ...filters, topicId: e.target.value })}>
             <option value="">All topics</option>
             {topics.data?.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </Select>
+          <Select
+            value={filters.skillRoleId}
+            onChange={(e) => setFilters({ ...filters, skillRoleId: e.target.value })}
+            disabled={!filters.skillId}
+          >
+            <option value="">All roles</option>
+            {filterSkillRoles.data?.map((r) => <option key={r.id} value={r.id}>{r.code} – {r.name}</option>)}
           </Select>
           <Select value={filters.difficulty} onChange={(e) => setFilters({ ...filters, difficulty: e.target.value })}>
             <option value="">All difficulties</option>
@@ -263,6 +296,15 @@ export default function QuestionsPage() {
             <option value="published">Published only</option>
           </Select>
         </div>
+        <label className="flex items-center gap-2 mt-3 text-sm text-slate-700 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={missingRolesOnly}
+            onChange={(e) => setMissingRolesOnly(e.target.checked)}
+            className="rounded border-slate-300 accent-indigo-600"
+          />
+          Show only questions missing skill roles
+        </label>
       </Card>
 
       {(questions.data?.filter((q) => q.status === "draft").length ?? 0) > 0 && (
@@ -271,6 +313,12 @@ export default function QuestionsPage() {
             Publish all {questions.data?.filter((q) => q.status === "draft").length} drafts
           </Button>
         </div>
+      )}
+
+      {visibleQuestions.length === 0 && !questions.isLoading && (
+        <p className="text-sm text-slate-500">
+          {missingRolesOnly ? "No questions missing skill roles." : "No questions match these filters."}
+        </p>
       )}
 
       {Object.entries(grouped).map(([group, qs]) => (
@@ -299,24 +347,46 @@ export default function QuestionsPage() {
                   </ol>
                   {editingRolesId === q.id && (
                     <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-                      <label className="text-xs text-slate-600 block">
-                        Skill roles (hold Ctrl/Cmd to multi-select)
-                      </label>
-                      <Select
-                        multiple
-                        className="h-24 w-full"
-                        value={editingRoleIds}
-                        onChange={(e) =>
-                          setEditingRoleIds(Array.from(e.target.selectedOptions, (o) => o.value))
-                        }
-                      >
-                        {editSkillRoles.data?.map((r) => (
-                          <option key={r.id} value={r.id}>{r.code} – {r.name}</option>
-                        ))}
-                      </Select>
+                      <p className="text-xs font-semibold text-slate-700">
+                        Skill roles for {q.skill.code} – {q.skill.name}
+                      </p>
+                      {editSkillRoles.isLoading && (
+                        <p className="text-xs text-slate-500">Loading roles…</p>
+                      )}
+                      {!editSkillRoles.isLoading && (editSkillRoles.data?.length ?? 0) === 0 && (
+                        <p className="text-xs text-amber-800">
+                          No roles exist for this skill yet. Open{" "}
+                          <Link to="/admin/skills" className="underline font-medium">Skills</Link>, expand{" "}
+                          <strong>{q.skill.name}</strong>, and add a role (e.g. ASSOC, SR_DEV), then return here.
+                        </p>
+                      )}
+                      {(editSkillRoles.data?.length ?? 0) > 0 && (
+                        <div className="space-y-1.5">
+                          {editSkillRoles.data!.map((r) => (
+                            <label key={r.id} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={editingRoleIds.includes(r.id)}
+                                onChange={(e) => {
+                                  setEditingRoleIds((prev) =>
+                                    e.target.checked ? [...prev, r.id] : prev.filter((id) => id !== r.id)
+                                  );
+                                }}
+                                className="rounded border-slate-300 accent-indigo-600"
+                              />
+                              <span className="font-mono text-xs text-indigo-700">{r.code}</span>
+                              <span>{r.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
                       <div className="flex gap-2">
                         <Button
-                          disabled={editingRoleIds.length === 0 || updateRoles.isPending}
+                          disabled={
+                            editingRoleIds.length === 0 ||
+                            updateRoles.isPending ||
+                            (editSkillRoles.data?.length ?? 0) === 0
+                          }
                           onClick={() => updateRoles.mutate({ id: q.id, skillRoleIds: editingRoleIds })}
                         >
                           Save roles
@@ -325,10 +395,22 @@ export default function QuestionsPage() {
                           Cancel
                         </Button>
                       </div>
+                      {updateRoles.isError && (
+                        <p className="text-xs text-red-600">{(updateRoles.error as Error).message}</p>
+                      )}
                     </div>
                   )}
                 </div>
-                <div className="flex gap-1 shrink-0">
+                <div className="flex flex-col gap-1 shrink-0 items-end">
+                  {q.skillRoles.length === 0 && (
+                    <Button
+                      variant="primary"
+                      onClick={() => (editingRolesId === q.id ? setEditingRolesId(null) : startEditRoles(q))}
+                    >
+                      Assign roles
+                    </Button>
+                  )}
+                  <div className="flex gap-1">
                   {q.status === "draft" ? (
                     <Button variant="primary" onClick={() => publish.mutate(q.id)} disabled={publish.isPending}>
                       Publish
@@ -338,13 +420,15 @@ export default function QuestionsPage() {
                       Unpublish
                     </Button>
                   )}
-                  <Button
-                    variant="secondary"
-                    onClick={() => (editingRolesId === q.id ? setEditingRolesId(null) : startEditRoles(q))}
-                    title="Edit skill roles"
-                  >
-                    <Pencil size={14} />
-                  </Button>
+                  {q.skillRoles.length > 0 && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => (editingRolesId === q.id ? setEditingRolesId(null) : startEditRoles(q))}
+                      title="Edit skill roles"
+                    >
+                      <Pencil size={14} />
+                    </Button>
+                  )}
                   <Button
                     variant="danger"
                     disabled={remove.isPending}
@@ -357,6 +441,7 @@ export default function QuestionsPage() {
                   >
                     <Trash2 size={14} />
                   </Button>
+                  </div>
                 </div>
               </div>
             ))}
