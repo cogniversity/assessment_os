@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { questionSchema, Role } from "@assessment-os/shared";
+import { questionSchema, questionUpdateSchema, Role } from "@assessment-os/shared";
 import { prisma } from "../../db.js";
 import { getUser } from "../../middleware/auth.js";
 import {
@@ -93,12 +93,21 @@ questionsRouter.put("/:id", async (req, res, next) => {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    const { skillRoleIds, ...fields } = questionSchema.partial().parse(req.body);
+    const { skillRoleIds, ...fields } = questionUpdateSchema.parse(req.body);
     const targetSkillId = fields.skillId ?? existing.skillId;
     const targetTopicId = fields.topicId ?? existing.topicId;
     if (!(await assertQuestionAccess(user.id, user.role, targetSkillId, targetTopicId))) {
       res.status(403).json({ error: "Forbidden" });
       return;
+    }
+
+    if (skillRoleIds) {
+      const roles = await prisma.skillRole.findMany({ where: { id: { in: skillRoleIds } } });
+      const invalid = roles.filter((r) => r.skillId !== targetSkillId);
+      if (invalid.length || roles.length !== skillRoleIds.length) {
+        res.status(400).json({ error: "One or more skillRoleIds do not belong to the question's skill" });
+        return;
+      }
     }
 
     const roleUpdate = skillRoleIds

@@ -19,3 +19,4 @@ coverage/
 .prisma/
 *.tsbuildinfo
 .vite/
+rebuild-server.sh

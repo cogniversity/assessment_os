@@ -52,7 +52,7 @@ export const topicSchema = z.object({
   proficiencyThresholds: z.array(z.number()).optional(),
 });
 
-export const questionSchema = z.object({
+const questionFieldsSchema = z.object({
   topicId: z.string().uuid(),
   skillId: z.string().uuid(),
   skillRoleIds: z.array(z.string().uuid()).min(1),
@@ -63,17 +63,33 @@ export const questionSchema = z.object({
   correctIndices: z.array(z.number().int().min(0)).min(1),
   explanation: z.string().optional(),
   status: z.enum([QuestionStatus.DRAFT, QuestionStatus.PUBLISHED]).default(QuestionStatus.DRAFT),
-}).superRefine((d, ctx) => {
-  if (d.correctIndices.some((i) => i >= d.options.length)) {
+});
+
+function refineQuestionAnswerRules(
+  d: {
+    questionType?: (typeof QuestionType)[keyof typeof QuestionType];
+    options?: string[];
+    correctIndices?: number[];
+  },
+  ctx: z.RefinementCtx
+) {
+  if (!d.options || !d.correctIndices) return;
+  if (d.correctIndices.some((i) => i >= d.options!.length)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "correctIndices must be within options range" });
   }
-  if (d.questionType === QuestionType.SINGLE && d.correctIndices.length !== 1) {
+  const questionType = d.questionType ?? QuestionType.SINGLE;
+  if (questionType === QuestionType.SINGLE && d.correctIndices.length !== 1) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Single-select questions must have exactly one correct index" });
   }
-  if (d.questionType === QuestionType.MULTI && d.correctIndices.length < 2) {
+  if (questionType === QuestionType.MULTI && d.correctIndices.length < 2) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Multi-select questions must have at least two correct indices" });
   }
-});
+}
+
+export const questionSchema = questionFieldsSchema.superRefine(refineQuestionAnswerRules);
+
+/** Partial update — ZodEffects from superRefine has no .partial(); use this on PUT */
+export const questionUpdateSchema = questionFieldsSchema.partial().superRefine(refineQuestionAnswerRules);
 
 // Certificate / pass-mark fields shared by both blueprint and assignment schemas
 const certPassFields = {
