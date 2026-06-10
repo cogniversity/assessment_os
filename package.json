@@ -22,6 +22,6 @@
     "docker:reset:local": "docker compose --env-file compose.env down && node -e \"const fs=require('fs');for (const p of ['data/postgres','data/uploads']) fs.rmSync(p,{recursive:true,force:true})\" && npm run docker:up:local"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^10.0.3"
   }
 }

@@ -1,7 +1,10 @@
 import { Router } from "express";
 import multer from "multer";
-import * as XLSX from "xlsx";
 import { prisma } from "../../db.js";
+import {
+  buildQuestionImportTemplateBuffer,
+  parseQuestionSpreadsheet,
+} from "../../services/questionSpreadsheet.js";
 
 export const questionImportRouter = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -45,14 +48,22 @@ function parseCorrectOptions(raw: string, optionCount: number): { indices: numbe
 }
 
 questionImportRouter.post("/validate", upload.single("file"), async (req, res) => {
-  const rows = parseFile(req.file!);
+  const rows = await parseQuestionSpreadsheet(
+    req.file!.buffer,
+    req.file!.originalname,
+    req.file!.mimetype
+  );
   const result = await validateRows(rows);
   res.json(result);
 });
 
 questionImportRouter.post("/commit", upload.single("file"), async (req, res) => {
   const user = (req as { user: { id: string } }).user;
-  const rows = parseFile(req.file!);
+  const rows = await parseQuestionSpreadsheet(
+    req.file!.buffer,
+    req.file!.originalname,
+    req.file!.mimetype
+  );
   const { valid } = await validateRows(rows);
   let imported = 0;
   for (const row of valid) {
@@ -76,20 +87,14 @@ questionImportRouter.post("/commit", upload.single("file"), async (req, res) => 
   res.json({ job, imported });
 });
 
-function parseFile(file: Express.Multer.File) {
-  const wb = XLSX.read(file.buffer, { type: "buffer" });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const raw = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: "" });
-  return raw.map((row) => {
+async function validateRows(rows: Record<string, string>[]) {
+  rows = rows.map((row) => {
     const normalized: Record<string, string> = {};
     for (const [k, v] of Object.entries(row)) {
       normalized[normalizeHeader(k)] = String(v).trim();
     }
     return normalized;
   });
-}
-
-async function validateRows(rows: Record<string, string>[]) {
   const skills = await prisma.skill.findMany();
   const topics = await prisma.topic.findMany();
   const roles  = await prisma.skillRole.findMany();
@@ -172,38 +177,13 @@ async function validateRows(rows: Record<string, string>[]) {
 }
 
 questionImportRouter.get("/template.xlsx", async (_req, res) => {
-  const wb = XLSX.utils.book_new();
-  const headers = [
-    "skillCode",
-    "topicName",
-    "skillRoleCodes",
-    "difficulty",
-    "questionStem",
-    "optionA",
-    "optionB",
-    "optionC",
-    "optionD",
-    "optionE",
-    "questionType",
-    "correctOption",
-    "explanation",
-    "status",
-  ];
-  const ws = XLSX.utils.aoa_to_sheet([
-    headers,
-    ["JS001", "JavaScript Basics", "SR_DEV",       "medium", "What is typeof null?", "object", "null", "undefined", "number", "", "single", "A", "typeof null returns object (legacy bug)", "draft"],
-    ["JS001", "JavaScript Basics", "ASSOC,SR_DEV", "easy",   "Which keywords declare block-scoped variables?", "var", "let", "const", "function", "", "multi", "B,C", "", "draft"],
-  ]);
-  XLSX.utils.book_append_sheet(wb, ws, "Questions");
-
-  // Reference sheet: skills and their roles
-  const skills = await prisma.skill.findMany({ include: { roles: { where: { isActive: true }, orderBy: { sortOrder: "asc" } } } });
+  const skills = await prisma.skill.findMany({
+    include: { roles: { where: { isActive: true }, orderBy: { sortOrder: "asc" } } },
+  });
   const refRows = skills.flatMap((s) =>
     s.roles.map((r) => ({ skillCode: s.code, skillName: s.name, roleCode: r.code, roleName: r.name }))
   );
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(refRows.length ? refRows : [{ info: "No roles defined yet" }]), "Skills & Roles");
-
-  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  const buf = await buildQuestionImportTemplateBuffer(refRows);
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", "attachment; filename=question-import-template.xlsx");
   res.send(buf);
