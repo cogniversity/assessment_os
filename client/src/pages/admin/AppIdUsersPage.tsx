@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import { Card, Button, Input, Badge, SectionHeader } from "../../components/Layout";
 import {
@@ -33,6 +33,11 @@ interface CdUserList {
 interface BulkImportResult {
   created: number;
   failed: { email: string; error: string }[];
+}
+
+interface AppIdSyncSummary {
+  synced: { email: string; userId: string; role: string; created: boolean }[];
+  skipped: { email: string; reason: string }[];
 }
 
 function FieldLabel({ label, required }: { label: string; required?: boolean }) {
@@ -145,7 +150,6 @@ function AppIdRoleEditor({
 }
 
 export default function AppIdUsersPage() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("list");
   const [search, setSearch] = useState("");
@@ -192,26 +196,32 @@ export default function AppIdUsersPage() {
     enabled: statusQ.data?.configured === true,
   });
 
-  const provisionProfile = useMutation({
-    mutationFn: (u: CdUser) => {
-      const email = u.emails?.find((e) => e.primary)?.value ?? u.emails?.[0]?.value;
-      if (!email) throw new Error("No email on user");
-      return api<{ id: string }>("/admin/users/provision", {
+  const syncUsers = useMutation({
+    mutationFn: (emails?: string[]) =>
+      api<AppIdSyncSummary>("/admin/appid-users/sync", {
         method: "POST",
-        json: {
-          email,
-          name: u.displayName ?? u.userName,
-          role: "candidate",
-        },
-      });
-    },
-    onSuccess: (user) => {
+        json: emails?.length ? { emails } : {},
+      }),
+    onSuccess: (summary) => {
       qc.invalidateQueries({ queryKey: ["users"] });
+      qc.invalidateQueries({ queryKey: ["manager-skills"] });
+      qc.invalidateQueries({ queryKey: ["manager-question-banks"] });
       qc.invalidateQueries({ queryKey: ["appid-users"] });
-      navigate(`/admin/candidates/${user.id}`);
+      const managers = summary.synced.filter((s) => s.role === "capability_manager").length;
+      const msg = `Synced ${summary.synced.length} user(s)${managers ? ` (${managers} capability manager${managers !== 1 ? "s" : ""})` : ""}${summary.skipped.length ? `; ${summary.skipped.length} skipped` : ""}.`;
+      showToast(msg, summary.skipped.length && !summary.synced.length ? "error" : "success");
     },
     onError: (e) => showToast((e as Error).message, "error"),
   });
+
+  function syncOneUser(u: CdUser) {
+    const email = primaryEmail(u);
+    if (email === "—") {
+      showToast("No email on user", "error");
+      return;
+    }
+    syncUsers.mutate([email]);
+  }
 
   // Create single
   const createMutation = useMutation({
@@ -346,14 +356,32 @@ export default function AppIdUsersPage() {
           title="Cloud Directory users"
           subtitle={listQ.data ? `${listQ.data.totalResults} total` : undefined}
           actions={
-            <button
-              type="button"
-              onClick={() => qc.invalidateQueries({ queryKey: ["appid-users"] })}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-              title="Refresh"
-            >
-              <RefreshCw size={15} className={listQ.isFetching ? "animate-spin" : ""} />
-            </button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  const emails = listQ.data?.Resources.map((u) => primaryEmail(u)).filter((e) => e !== "—") ?? [];
+                  if (emails.length === 0) {
+                    syncUsers.mutate(undefined);
+                  } else {
+                    syncUsers.mutate(emails);
+                  }
+                }}
+                disabled={syncUsers.isPending || listQ.isLoading}
+              >
+                <RefreshCw size={14} className={syncUsers.isPending ? "animate-spin" : ""} />
+                {syncUsers.isPending ? "Syncing…" : "Sync to app"}
+              </Button>
+              <button
+                type="button"
+                onClick={() => qc.invalidateQueries({ queryKey: ["appid-users"] })}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                title="Refresh App ID list"
+              >
+                <RefreshCw size={15} className={listQ.isFetching ? "animate-spin" : ""} />
+              </button>
+            </div>
           }
         >
           {/* Search */}
@@ -402,6 +430,11 @@ export default function AppIdUsersPage() {
             </p>
           )}
 
+          <p className="text-xs text-slate-500 mb-3">
+            Use <strong>Sync to app</strong> to create or update local users from App ID (including capability managers
+            before their first login). Roles come from IBM App ID roles and your <code className="bg-slate-100 px-1 rounded">APPID_ROLE_*</code> mapping.
+          </p>
+
           {listQ.data && listQ.data.Resources.length > 0 && (
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <table className="w-full text-sm">
@@ -439,22 +472,21 @@ export default function AppIdUsersPage() {
                       </td>
                       <td className="px-4 py-3 text-sm align-top">
                         <div className="flex flex-col gap-1">
-                          {u.appUserId ? (
+                          <button
+                            type="button"
+                            className="text-left text-indigo-600 hover:underline disabled:opacity-50"
+                            disabled={syncUsers.isPending || primaryEmail(u) === "—"}
+                            onClick={() => syncOneUser(u)}
+                          >
+                            {u.appUserId ? "Re-sync to app" : "Sync to app"}
+                          </button>
+                          {u.appUserId && u.appRole === "candidate" && (
                             <Link
                               to={`/admin/candidates/${u.appUserId}`}
-                              className="text-indigo-600 hover:underline"
+                              className="text-slate-500 hover:text-indigo-600 text-xs"
                             >
                               Staffing profile
                             </Link>
-                          ) : (
-                            <button
-                              type="button"
-                              className="text-left text-indigo-600 hover:underline disabled:opacity-50"
-                              disabled={provisionProfile.isPending}
-                              onClick={() => provisionProfile.mutate(u)}
-                            >
-                              Manage staffing profile
-                            </button>
                           )}
                           {roleDefsQ.data && primaryEmail(u) !== "—" && (
                             <button
@@ -477,8 +509,8 @@ export default function AppIdUsersPage() {
                             roleDefs={roleDefsQ.data}
                             onSaved={() => {
                               qc.invalidateQueries({ queryKey: ["appid-users"] });
-                              showToast("IBM roles updated");
                               setEditingRolesEmail(null);
+                              syncUsers.mutate([primaryEmail(u)]);
                             }}
                           />
                         )}

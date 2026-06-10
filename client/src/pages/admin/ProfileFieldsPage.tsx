@@ -2,7 +2,7 @@ import { CrudPage } from "./CrudPage";
 
 export default function ProfileFieldsPage() {
   return (
-    <CrudPage
+    <CrudPage<{ id: string; key: string; label: string; type: string }>
       title="Custom profile fields"
       endpoint="/admin/profile-fields"
       fields={[
@@ -12,7 +12,7 @@ export default function ProfileFieldsPage() {
       ]}
       renderRow={(f) => (
         <span>
-          {(f as { key: string; label: string; type: string }).key} — {(f as { label: string }).label} ({(f as { type: string }).type})
+          {(f.key)} — {(f.label)} ({(f.type)})
         </span>
       )}
     />

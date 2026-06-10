@@ -9,6 +9,7 @@ import {
   setUserAppIdRolesByNames,
   type BulkImportUser,
 } from "../../services/appidManagement.js";
+import { syncAppIdUsersToLocal } from "../../services/appIdUserSync.js";
 
 export const appidUsersRouter = Router();
 
@@ -115,6 +116,25 @@ appidUsersRouter.patch("/by-email/:email/ibm-roles", async (req, res, next) => {
     const { roleNames } = z.object({ roleNames: z.array(z.string()) }).parse(req.body);
     const appIdRoles = await setUserAppIdRolesByNames(email, roleNames);
     res.json({ email, appIdRoles });
+  } catch (e) {
+    next(e);
+  }
+});
+
+const syncSchema = z.object({
+  emails: z.array(z.string().email()).optional(),
+});
+
+/** Create or update local User records from App ID (role from IBM roles + email fallbacks). */
+appidUsersRouter.post("/sync", async (req, res, next) => {
+  if (!isAppIdConfigured()) {
+    res.status(503).json({ error: "App ID not configured." });
+    return;
+  }
+  try {
+    const body = syncSchema.parse(req.body ?? {});
+    const summary = await syncAppIdUsersToLocal({ emails: body.emails });
+    res.json(summary);
   } catch (e) {
     next(e);
   }
