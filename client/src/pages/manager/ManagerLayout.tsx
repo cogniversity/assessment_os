@@ -35,7 +35,7 @@ const navGroups = [
   {
     label: "Assessments",
     items: [
-      { to: "/manager/assign", label: "Assign", icon: <ClipboardList size={16} /> },
+      { to: "/manager/assign", label: "Assignments", icon: <ClipboardList size={16} /> },
       { to: "/manager/reattempts", label: "Reattempts", icon: <RotateCcw size={16} /> },
       { to: "/manager/results", label: "Results", icon: <BarChart2 size={16} /> },
       { to: "/manager/analytics", label: "Analytics", icon: <LineChart size={16} /> },

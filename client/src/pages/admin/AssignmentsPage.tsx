@@ -4,8 +4,9 @@ import { api } from "../../api/client";
 import { Card, Button, Input, Select, Badge, SectionHeader } from "../../components/Layout";
 import {
   Wand2, Users, SlidersHorizontal,
-  Award, CheckCircle2, ChevronRight, Info, Search
+  Award, CheckCircle2, ChevronRight, Info, Search, LayoutList
 } from "lucide-react";
+import AssignmentsOverview from "./AssignmentsOverview";
 
 interface Blueprint {
   id: string;
@@ -52,6 +53,7 @@ type SelectedCandidate = Pick<
 interface Skill { id: string; code: string; name: string }
 interface Topic { id: string; name: string }
 
+type PageTab = "overview" | "assign";
 type Step = "blueprint" | "candidates" | "config" | "scoring" | "review";
 
 const STEPS: { id: Step; label: string; icon: React.ReactNode }[] = [
@@ -105,6 +107,7 @@ export default function AssignmentsPage() {
   });
   const blueprints = useQuery({ queryKey: ["blueprints"], queryFn: () => api<Blueprint[]>("/admin/blueprints") });
 
+  const [pageTab, setPageTab] = useState<PageTab>("overview");
   const [step, setStep] = useState<Step>("blueprint");
   const [toast, setToast] = useState("");
 
@@ -246,6 +249,8 @@ export default function AssignmentsPage() {
       const n = form.selectedCandidates.length;
       showToast(`Assessment assigned to ${n} candidate${n > 1 ? "s" : ""}!`);
       qc.invalidateQueries({ queryKey: ["assignments"] });
+      qc.invalidateQueries({ queryKey: ["analytics-status-breakdown"] });
+      setPageTab("overview");
       setStep("blueprint");
       setForm((f) => ({
         ...f,
@@ -287,10 +292,47 @@ export default function AssignmentsPage() {
       )}
 
       <SectionHeader
-        title="Assign Assessment"
-        description="Select a blueprint or configure manually, then assign to candidates."
+        title="Assignments"
+        description={
+          pageTab === "overview"
+            ? "View all assigned assessments and their statuses."
+            : "Select a blueprint or configure manually, then assign to candidates."
+        }
       />
 
+      <div className="flex gap-0 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm w-fit">
+        <button
+          type="button"
+          onClick={() => setPageTab("overview")}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+            pageTab === "overview"
+              ? "bg-indigo-600 text-white"
+              : "text-slate-500 hover:bg-slate-50"
+          }`}
+        >
+          <LayoutList size={14} />
+          Overview
+        </button>
+        <button
+          type="button"
+          onClick={() => setPageTab("assign")}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-l border-slate-200 ${
+            pageTab === "assign"
+              ? "bg-indigo-600 text-white"
+              : "text-slate-500 hover:bg-slate-50"
+          }`}
+        >
+          <Wand2 size={14} />
+          Assign new
+        </button>
+      </div>
+
+      {pageTab === "overview" && (
+        <AssignmentsOverview onAssignNew={() => setPageTab("assign")} />
+      )}
+
+      {pageTab === "assign" && (
+        <>
       {/* Step indicator */}
       <div className="flex items-center gap-0 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
         {STEPS.map((s) => {
@@ -764,6 +806,8 @@ export default function AssignmentsPage() {
           </Button>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

@@ -59,7 +59,7 @@ const navGroups = [
     label: "Assessments",
     items: [
       { to: "/admin/blueprints", label: "Blueprints", icon: <Layers size={16} /> },
-      { to: "/admin/assignments", label: "Assign", icon: <ClipboardList size={16} /> },
+      { to: "/admin/assignments", label: "Assignments", icon: <ClipboardList size={16} /> },
       { to: "/admin/reattempts", label: "Reattempts", icon: <RotateCcw size={16} /> },
       { to: "/admin/results", label: "Results", icon: <BarChart2 size={16} /> },
       { to: "/admin/analytics", label: "Analytics", icon: <LineChart size={16} /> },

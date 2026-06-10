@@ -145,11 +145,31 @@ assignmentsRouter.post("/", async (req, res, next) => {
 assignmentsRouter.get("/", async (req, res, next) => {
   try {
     const user = getUser(req);
-    let where = {};
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    const skillId = typeof req.query.skillId === "string" ? req.query.skillId : undefined;
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : undefined;
+    const assignedByMe = req.query.assignedByMe === "true";
+
+    const filters: object[] = [];
     if (user.role === Role.CAPABILITY_MANAGER) {
       const skillIds = await getManagerSkillIds(user.id);
-      where = { skillId: { in: skillIds } };
+      filters.push({ skillId: { in: skillIds } });
     }
+    if (status) filters.push({ status: status as never });
+    if (skillId) filters.push({ skillId });
+    if (assignedByMe) filters.push({ assignedById: user.id });
+    if (q) {
+      filters.push({
+        user: {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { email: { contains: q, mode: "insensitive" } },
+          ],
+        },
+      });
+    }
+
+    const where = filters.length > 0 ? { AND: filters } : {};
     const list = await prisma.assessment.findMany({
       where,
       include: {

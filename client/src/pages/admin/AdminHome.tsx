@@ -6,7 +6,7 @@ import { Tag, HelpCircle, Users, ClipboardList, BarChart2, ArrowRight, RotateCcw
 
 const quickLinks = [
   { to: "/admin/questions", label: "Question Bank", description: "Manage and publish questions", icon: <HelpCircle size={20} />, color: "bg-indigo-50 text-indigo-600" },
-  { to: "/admin/assignments", label: "Assign Assessment", description: "Assign tests to candidates", icon: <ClipboardList size={20} />, color: "bg-green-50 text-green-600" },
+  { to: "/admin/assignments", label: "Assignments", description: "View and assign assessments", icon: <ClipboardList size={20} />, color: "bg-green-50 text-green-600" },
   { to: "/admin/reattempts", label: "Reattempt requests", description: "Approve candidate retakes", icon: <RotateCcw size={20} />, color: "bg-amber-50 text-amber-600" },
   { to: "/admin/results", label: "View Results", description: "Review candidate scores", icon: <BarChart2 size={20} />, color: "bg-orange-50 text-orange-600" },
   { to: "/admin/users", label: "Manage Users", description: "Candidates and managers", icon: <Users size={20} />, color: "bg-purple-50 text-purple-600" },
