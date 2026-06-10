@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
-import { Card, SectionHeader } from "../../components/Layout";
-import { Trash2, Plus } from "lucide-react";
+import { formatAppIdSyncMessage, useAppIdUserSync } from "../../hooks/useAppIdUserSync";
+import { Card, SectionHeader, Button } from "../../components/Layout";
+import { Trash2, Plus, RefreshCw } from "lucide-react";
 
 type ManagerSkillRow = {
   id: string;
@@ -17,6 +19,18 @@ type Skill = { id: string; name: string; code: string };
 
 export default function ManagerSkillsPage() {
   const qc = useQueryClient();
+  const [syncNotice, setSyncNotice] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
+  const statusQ = useQuery({
+    queryKey: ["appid-status"],
+    queryFn: () => api<{ configured: boolean }>("/admin/appid-users/status"),
+  });
+
+  const syncUsers = useAppIdUserSync({
+    onSuccess: (summary) =>
+      setSyncNotice({ msg: formatAppIdSyncMessage(summary), type: "success" }),
+    onError: (e) => setSyncNotice({ msg: e.message, type: "error" }),
+  });
 
   const { data: rows = [], isLoading } = useQuery<ManagerSkillRow[]>({
     queryKey: ["manager-skills"],
@@ -62,15 +76,41 @@ export default function ManagerSkillsPage() {
     ? skills.filter((s) => !assignedPairs.has(`${form.userId}:${s.id}`))
     : skills;
 
+  const appIdConfigured = statusQ.data?.configured === true;
+
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-1">Manager Skills</h1>
-      <p className="text-sm text-slate-500 mb-6 max-w-2xl">
-        Assign operational skills to Capability Managers. This controls blueprints, assignments,
-        results, and analytics scope. Question bank editing is configured separately on{" "}
-        <strong>Manager Question Banks</strong>. Managers with no skills here cannot create
-        blueprints or assign assessments for those skills.
-      </p>
+      <SectionHeader
+        title="Manager Skills"
+        description={
+          <>
+            Assign operational skills to Capability Managers. Question bank editing is on{" "}
+            <strong>Manager Question Banks</strong>. Managers only appear here after they exist in the app — use{" "}
+            <strong>Sync from App ID</strong> to import App ID users with the Capability_Manager role before first login.
+          </>
+        }
+        actions={
+          <Button
+            variant="primary"
+            onClick={() => syncUsers.mutate(undefined)}
+            disabled={!appIdConfigured || syncUsers.isPending}
+            title={
+              appIdConfigured
+                ? "Import all App ID users into the app"
+                : "Configure APPID_IAM_APIKEY and APPID_TENANT_ID first"
+            }
+          >
+            <RefreshCw size={16} className={syncUsers.isPending ? "animate-spin" : ""} />
+            {syncUsers.isPending ? "Syncing…" : "Sync from App ID"}
+          </Button>
+        }
+      />
+
+      {syncNotice && (
+        <p className={`text-sm mb-4 ${syncNotice.type === "error" ? "text-red-600" : "text-green-700"}`}>
+          {syncNotice.msg}
+        </p>
+      )}
 
       {/* Assign form */}
       <Card className="mb-6">
@@ -131,8 +171,12 @@ export default function ManagerSkillsPage() {
         <p className="text-sm text-slate-500">Loading…</p>
       ) : managers.length === 0 ? (
         <p className="text-sm text-slate-500">
-          No Capability Managers found. Change a user's role to <strong>Capability Manager</strong>{" "}
-          on the Users page first.
+          No Capability Managers in the app yet. Click <strong>Sync from App ID</strong> above (users need the IBM{" "}
+          <strong>Capability_Manager</strong> role in App ID), or assign the role on{" "}
+          <Link to="/admin/appid-users" className="text-indigo-600 hover:underline">
+            App ID Users
+          </Link>
+          .
         </p>
       ) : (
         <div className="space-y-4">

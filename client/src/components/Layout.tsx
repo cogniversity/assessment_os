@@ -331,11 +331,22 @@ export function Badge({
   );
 }
 
-export function SectionHeader({ title, description }: { title: string; description?: string }) {
+export function SectionHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
   return (
-    <div className="mb-6">
-      <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
-      {description && <p className="text-slate-500 text-sm mt-1">{description}</p>}
+    <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+        {description && <p className="text-slate-500 text-sm mt-1">{description}</p>}
+      </div>
+      {actions && <div className="shrink-0">{actions}</div>}
     </div>
   );
 }

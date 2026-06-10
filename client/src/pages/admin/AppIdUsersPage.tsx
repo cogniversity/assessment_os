@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
+import { formatAppIdSyncMessage, useAppIdUserSync } from "../../hooks/useAppIdUserSync";
 import { Card, Button, Input, Badge, SectionHeader } from "../../components/Layout";
 import {
   UserPlus, Users, Upload, Search, CheckCircle2,
@@ -33,11 +34,6 @@ interface CdUserList {
 interface BulkImportResult {
   created: number;
   failed: { email: string; error: string }[];
-}
-
-interface AppIdSyncSummary {
-  synced: { email: string; userId: string; role: string; created: boolean }[];
-  skipped: { email: string; reason: string }[];
 }
 
 function FieldLabel({ label, required }: { label: string; required?: boolean }) {
@@ -196,23 +192,18 @@ export default function AppIdUsersPage() {
     enabled: statusQ.data?.configured === true,
   });
 
-  const syncUsers = useMutation({
-    mutationFn: (emails?: string[]) =>
-      api<AppIdSyncSummary>("/admin/appid-users/sync", {
-        method: "POST",
-        json: emails?.length ? { emails } : {},
-      }),
+  const syncUsers = useAppIdUserSync({
     onSuccess: (summary) => {
-      qc.invalidateQueries({ queryKey: ["users"] });
-      qc.invalidateQueries({ queryKey: ["manager-skills"] });
-      qc.invalidateQueries({ queryKey: ["manager-question-banks"] });
-      qc.invalidateQueries({ queryKey: ["appid-users"] });
-      const managers = summary.synced.filter((s) => s.role === "capability_manager").length;
-      const msg = `Synced ${summary.synced.length} user(s)${managers ? ` (${managers} capability manager${managers !== 1 ? "s" : ""})` : ""}${summary.skipped.length ? `; ${summary.skipped.length} skipped` : ""}.`;
+      const msg = formatAppIdSyncMessage(summary);
       showToast(msg, summary.skipped.length && !summary.synced.length ? "error" : "success");
     },
-    onError: (e) => showToast((e as Error).message, "error"),
+    onError: (e) => showToast(e.message, "error"),
   });
+
+  function syncVisibleUsers() {
+    const emails = listQ.data?.Resources.map((u) => primaryEmail(u)).filter((e) => e !== "—") ?? [];
+    syncUsers.mutate(emails.length ? emails : undefined);
+  }
 
   function syncOneUser(u: CdUser) {
     const email = primaryEmail(u);
@@ -304,7 +295,20 @@ export default function AppIdUsersPage() {
 
       <SectionHeader
         title="IBM App ID Users"
-        description="IBM Cloud Directory accounts. App roles (Admin, Capability_Manager, Candidate) show after login or from Profiles & roles."
+        description="IBM Cloud Directory accounts. Use Sync to app to create local users (including capability managers) before their first login."
+        actions={
+          !notConfigured ? (
+            <Button
+              variant="primary"
+              onClick={syncVisibleUsers}
+              disabled={syncUsers.isPending || listQ.isLoading}
+              title="Create or update local app users from App ID"
+            >
+              <RefreshCw size={16} className={syncUsers.isPending ? "animate-spin" : ""} />
+              {syncUsers.isPending ? "Syncing…" : "Sync to app"}
+            </Button>
+          ) : undefined
+        }
       />
 
       {/* Not configured banner */}
@@ -356,32 +360,14 @@ export default function AppIdUsersPage() {
           title="Cloud Directory users"
           subtitle={listQ.data ? `${listQ.data.totalResults} total` : undefined}
           actions={
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  const emails = listQ.data?.Resources.map((u) => primaryEmail(u)).filter((e) => e !== "—") ?? [];
-                  if (emails.length === 0) {
-                    syncUsers.mutate(undefined);
-                  } else {
-                    syncUsers.mutate(emails);
-                  }
-                }}
-                disabled={syncUsers.isPending || listQ.isLoading}
-              >
-                <RefreshCw size={14} className={syncUsers.isPending ? "animate-spin" : ""} />
-                {syncUsers.isPending ? "Syncing…" : "Sync to app"}
-              </Button>
-              <button
-                type="button"
-                onClick={() => qc.invalidateQueries({ queryKey: ["appid-users"] })}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-                title="Refresh App ID list"
-              >
-                <RefreshCw size={15} className={listQ.isFetching ? "animate-spin" : ""} />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => qc.invalidateQueries({ queryKey: ["appid-users"] })}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              title="Refresh App ID list"
+            >
+              <RefreshCw size={15} className={listQ.isFetching ? "animate-spin" : ""} />
+            </button>
           }
         >
           {/* Search */}

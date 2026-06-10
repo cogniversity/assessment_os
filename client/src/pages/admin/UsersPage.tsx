@@ -30,7 +30,11 @@ export default function UsersPage() {
         {!data?.length ? (
           <p className="text-sm text-slate-500 py-4">
             No users in the app database yet. Users appear after they sign in once, or when you use{" "}
-            <strong>Manage staffing profile</strong> on App ID Users.
+            <strong>Sync to app</strong> on{" "}
+            <Link to="/admin/appid-users" className="text-indigo-600 hover:underline">
+              App ID Users
+            </Link>
+            .
           </p>
         ) : (
           <table className="w-full text-sm">
