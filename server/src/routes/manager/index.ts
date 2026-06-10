@@ -5,9 +5,48 @@ import { prisma } from "../../db.js";
 import { remarkSchema, proficiencyOverrideSchema } from "@assessment-os/shared";
 import { updateProfile, overrideProficiency, ensureProfile } from "../../services/profileService.js";
 import { getManagerSkillIds } from "../../services/managerSkills.js";
+import { getManagerQuestionBankGrants } from "../../services/managerQuestionBanks.js";
 
 export const managerRouter = Router();
 managerRouter.use(requireAuth, requireRole(Role.ADMIN, Role.CAPABILITY_MANAGER));
+
+managerRouter.get("/skills", async (req, res, next) => {
+  try {
+    const user = (req as { user: { id: string; role: string } }).user;
+    if (user.role === Role.ADMIN) {
+      res.json(await prisma.managerSkill.findMany({
+        include: { skill: { select: { id: true, name: true, code: true } } },
+        orderBy: { skill: { name: "asc" } },
+      }));
+      return;
+    }
+    const rows = await prisma.managerSkill.findMany({
+      where: { userId: user.id },
+      include: { skill: { select: { id: true, name: true, code: true } } },
+      orderBy: { skill: { name: "asc" } },
+    });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
+managerRouter.get("/question-banks", async (req, res, next) => {
+  try {
+    const user = (req as { user: { id: string; role: string } }).user;
+    const rows = await prisma.managerQuestionBank.findMany({
+      where: user.role === Role.ADMIN ? {} : { userId: user.id },
+      include: {
+        skill: { select: { id: true, name: true, code: true } },
+        topic: { select: { id: true, name: true, category: { select: { name: true } } } },
+      },
+      orderBy: [{ skill: { name: "asc" } }, { topic: { name: "asc" } }],
+    });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+});
 
 managerRouter.get("/candidates", async (req, res) => {
   const user = (req as { user: { id: string; role: string } }).user;

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { api } from "../../api/client";
+import { useAuth } from "../../context/AuthContext";
 import { Card, Button, Input, Select } from "../../components/Layout";
 
 interface SkillRole {
@@ -35,8 +36,17 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+type QuestionBankGrant = {
+  skillId: string;
+  topicId: string;
+  skill: { id: string; code: string; name: string };
+  topic: { id: string; name: string };
+};
+
 export default function QuestionsPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isManager = user?.role === "capability_manager";
   const [toast, setToast] = useState("");
   const [filters, setFilters] = useState({ topicId: "", skillId: "", status: "", skillRoleId: "", difficulty: "" });
   const [form, setForm] = useState({
@@ -52,8 +62,30 @@ export default function QuestionsPage() {
     status: "draft",
   });
 
+  const grants = useQuery({
+    queryKey: ["manager-question-banks"],
+    queryFn: () => api<QuestionBankGrant[]>("/manager/question-banks"),
+    enabled: isManager,
+  });
+
   const skills = useQuery({ queryKey: ["skills"], queryFn: () => api<{ id: string; code: string; name: string }[]>("/admin/skills") });
   const topics = useQuery({ queryKey: ["topics"], queryFn: () => api<{ id: string; name: string; category: { name: string } }[]>("/admin/topics") });
+
+  const grantPairs = grants.data ?? [];
+  const hasGrants = !isManager || grantPairs.length > 0;
+
+  const createSkills = useMemo(() => {
+    if (!isManager) return skills.data ?? [];
+    const ids = new Set(grantPairs.map((g) => g.skillId));
+    return (skills.data ?? []).filter((s) => ids.has(s.id));
+  }, [isManager, grantPairs, skills.data]);
+
+  const createTopics = useMemo(() => {
+    if (!form.skillId) return [];
+    if (!isManager) return topics.data ?? [];
+    const ids = new Set(grantPairs.filter((g) => g.skillId === form.skillId).map((g) => g.topicId));
+    return (topics.data ?? []).filter((t) => ids.has(t.id));
+  }, [isManager, grantPairs, form.skillId, topics.data]);
   const skillRoles = useQuery({
     queryKey: ["skill-roles", form.skillId],
     queryFn: () => api<SkillRole[]>(`/admin/skills/${form.skillId}/roles`),
@@ -164,6 +196,13 @@ export default function QuestionsPage() {
 
       <h1 className="text-2xl font-semibold">Question Bank</h1>
 
+      {isManager && !hasGrants && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+          You have no question bank grants yet. Ask an admin to assign skill + topic banks on{" "}
+          <strong>Manager Question Banks</strong>.
+        </div>
+      )}
+
       <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
         <strong>How it works:</strong> Questions are tagged to a Topic, Skill, and one or more Skill Roles.
         Use <strong>single</strong> for one correct answer, or <strong>multi</strong> for select-all-that-apply.
@@ -246,17 +285,22 @@ export default function QuestionsPage() {
             <label className="text-xs text-slate-500 block mb-1">Skill *</label>
             <Select
               value={form.skillId}
-              onChange={(e) => setForm({ ...form, skillId: e.target.value, skillRoleIds: [], correctIndices: [] })}
+              onChange={(e) => setForm({ ...form, skillId: e.target.value, topicId: "", skillRoleIds: [], correctIndices: [] })}
+              disabled={isManager && !hasGrants}
             >
               <option value="">Select skill</option>
-              {skills.data?.map((s) => <option key={s.id} value={s.id}>{s.code} – {s.name}</option>)}
+              {createSkills.map((s) => <option key={s.id} value={s.id}>{s.code} – {s.name}</option>)}
             </Select>
           </div>
           <div>
             <label className="text-xs text-slate-500 block mb-1">Topic *</label>
-            <Select value={form.topicId} onChange={(e) => setForm({ ...form, topicId: e.target.value })}>
+            <Select
+              value={form.topicId}
+              onChange={(e) => setForm({ ...form, topicId: e.target.value })}
+              disabled={isManager && !hasGrants}
+            >
               <option value="">Select topic</option>
-              {topics.data?.map((t) => <option key={t.id} value={t.id}>{t.category.name} → {t.name}</option>)}
+              {createTopics.map((t) => <option key={t.id} value={t.id}>{t.category.name} → {t.name}</option>)}
             </Select>
           </div>
           <div>

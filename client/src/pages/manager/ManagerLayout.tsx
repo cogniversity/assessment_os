@@ -6,7 +6,9 @@ import ManagerAssignments from "./ManagerAssignments";
 import ManagerResults from "./ManagerResults";
 import ManagerAnalytics from "./ManagerAnalytics";
 import CandidateDetail from "./CandidateDetail";
-import { LayoutDashboard, Users, ClipboardList, BarChart2, LineChart, RotateCcw } from "lucide-react";
+import QuestionsPage from "../admin/QuestionsPage";
+import BlueprintsPage from "../admin/BlueprintsPage";
+import { LayoutDashboard, Users, ClipboardList, BarChart2, LineChart, RotateCcw, HelpCircle, Layers } from "lucide-react";
 import ReattemptRequestsPage from "./ReattemptRequestsPage";
 import AttemptDetailPage from "../shared/AttemptDetailPage";
 
@@ -21,6 +23,13 @@ const navGroups = [
     label: "Candidates",
     items: [
       { to: "/manager/candidates", label: "Candidates", icon: <Users size={16} /> },
+    ],
+  },
+  {
+    label: "Content",
+    items: [
+      { to: "/manager/questions", label: "Question Bank", icon: <HelpCircle size={16} /> },
+      { to: "/manager/blueprints", label: "Blueprints", icon: <Layers size={16} /> },
     ],
   },
   {
@@ -41,6 +50,8 @@ export default function ManagerLayout() {
         <Route index element={<ManagerHome />} />
         <Route path="candidates" element={<CandidatesPage />} />
         <Route path="candidates/:userId" element={<CandidateDetail />} />
+        <Route path="questions" element={<QuestionsPage />} />
+        <Route path="blueprints" element={<BlueprintsPage />} />
         <Route path="assign" element={<ManagerAssignments />} />
         <Route path="reattempts" element={<ReattemptRequestsPage />} />
         <Route path="results" element={<ManagerResults />} />

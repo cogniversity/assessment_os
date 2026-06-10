@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { api } from "../../api/client";
+import { useAuth } from "../../context/AuthContext";
 import { Card, Button, Input, Select, Badge, SectionHeader } from "../../components/Layout";
 import {
   Plus, Pencil, Trash2, CheckCircle2, Award,
@@ -86,14 +87,30 @@ function InfoBox({ children }: { children: React.ReactNode }) {
   );
 }
 
+type ManagerSkillRow = { skillId: string; skill: Skill };
+
 export default function BlueprintsPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isManager = user?.role === "capability_manager";
   const [editing, setEditing] = useState<string | null>(null); // blueprint id, or "new", or null
   const [form, setForm] = useState(emptyForm);
   const [toast, setToast] = useState("");
 
   const blueprints = useQuery({ queryKey: ["blueprints"], queryFn: () => api<Blueprint[]>("/admin/blueprints") });
   const skills = useQuery({ queryKey: ["skills"], queryFn: () => api<Skill[]>("/admin/skills") });
+  const managerSkills = useQuery({
+    queryKey: ["manager-assigned-skills"],
+    queryFn: () => api<ManagerSkillRow[]>("/manager/skills"),
+    enabled: isManager,
+  });
+
+  const blueprintSkills = useMemo(() => {
+    if (!isManager) return skills.data ?? [];
+    return managerSkills.data?.map((r) => r.skill) ?? [];
+  }, [isManager, skills.data, managerSkills.data]);
+
+  const canManageBlueprints = !isManager || blueprintSkills.length > 0;
   const topics = useQuery({ queryKey: ["topics"], queryFn: () => api<Topic[]>("/admin/topics") });
   const skillRoles = useQuery({
     queryKey: ["skill-roles", form.skillId],
@@ -217,12 +234,19 @@ export default function BlueprintsPage() {
           title="Blueprints"
           description="Reusable assessment templates. Apply a blueprint when assigning to pre-fill all settings."
         />
-        {!editing && (
+        {!editing && canManageBlueprints && (
           <Button onClick={openNew} className="shrink-0 mt-1">
             <Plus size={15} /> New Blueprint
           </Button>
         )}
       </div>
+
+      {isManager && !canManageBlueprints && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
+          You have no assigned skills yet. Ask an admin to assign skills on <strong>Manager Skills</strong> before
+          creating blueprints.
+        </div>
+      )}
 
       <div className={`grid gap-6 ${editing ? "lg:grid-cols-[1fr_420px]" : ""}`}>
         {/* ── Blueprint list ── */}
@@ -361,7 +385,7 @@ export default function BlueprintsPage() {
                     onChange={(e) => setForm((f) => ({ ...f, skillId: e.target.value, skillRoleId: "" }))}
                   >
                     <option value="">Select a skill…</option>
-                    {skills.data?.map((s) => (
+                    {blueprintSkills.map((s) => (
                       <option key={s.id} value={s.id}>{s.code} – {s.name}</option>
                     ))}
                   </Select>

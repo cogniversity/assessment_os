@@ -1,8 +1,6 @@
 import { Router } from "express";
-import { skillSchema, skillUpdateSchema, skillRoleSchema, Role } from "@assessment-os/shared";
+import { skillSchema, skillUpdateSchema, skillRoleSchema } from "@assessment-os/shared";
 import { prisma } from "../../db.js";
-import { getUser } from "../../middleware/auth.js";
-import { getManagerSkillIds } from "../../services/managerSkills.js";
 
 export const skillsRouter = Router();
 
@@ -12,16 +10,9 @@ function normalizeSkillCode(code: string): string {
 
 // ── Skills ────────────────────────────────────────────────────────────────────
 
-skillsRouter.get("/", async (req, res) => {
-  const user = getUser(req);
-  let where = {};
-  if (user.role === Role.CAPABILITY_MANAGER) {
-    const skillIds = await getManagerSkillIds(user.id);
-    where = { id: { in: skillIds } };
-  }
+skillsRouter.get("/", async (_req, res) => {
   res.json(
     await prisma.skill.findMany({
-      where,
       orderBy: { code: "asc" },
       include: { _count: { select: { roles: true, questions: true } } },
     })
@@ -134,14 +125,6 @@ skillsRouter.delete("/:id", async (req, res) => {
 // ── Skill roles (per skill) ───────────────────────────────────────────────────
 
 skillsRouter.get("/:skillId/roles", async (req, res) => {
-  const user = getUser(req);
-  if (user.role === Role.CAPABILITY_MANAGER) {
-    const skillIds = await getManagerSkillIds(user.id);
-    if (!skillIds.includes(req.params.skillId)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-  }
   const roles = await prisma.skillRole.findMany({
     where: { skillId: req.params.skillId },
     orderBy: [{ sortOrder: "asc" }, { code: "asc" }],

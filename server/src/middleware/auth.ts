@@ -55,6 +55,12 @@ export const requireManagerOrAdmin = [
   requireAuth,
   requireRole(Role.ADMIN, Role.CAPABILITY_MANAGER),
 ] as const;
+
+/** Admins and capability managers (all HTTP methods). */
+export const requireAdminOrManager = [
+  requireAuth,
+  requireRole(Role.ADMIN, Role.CAPABILITY_MANAGER),
+] as const;
 export const requireAnyAuth = [requireAuth] as const;
 
 export function getUser(req: Request): User {
