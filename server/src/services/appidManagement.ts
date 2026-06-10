@@ -592,7 +592,7 @@ async function createCdUserViaImport(scimUser: Record<string, unknown>): Promise
   const email =
     (scimUser.emails as { value?: string }[] | undefined)?.[0]?.value?.toLowerCase() ?? "";
 
-  const res = await mgmtFetch("/cloud_directory/Users/import", {
+  const res = await mgmtFetch("/cloud_directory/import", {
     method: "POST",
     body: JSON.stringify({ users: [{ scimUser }] }),
   });
@@ -694,15 +694,25 @@ export async function bulkImportCdUsers(users: BulkImportUser[]): Promise<BulkIm
       }),
     };
 
-    const res = await mgmtFetch("/cloud_directory/Users/import", {
+    const res = await mgmtFetch("/cloud_directory/import", {
       method: "POST",
       body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
-      // Mark whole batch as failed if the request itself failed
-      const text = await res.text().catch(() => res.statusText);
-      batch.forEach((u) => result.failed.push({ email: u.email, error: `HTTP ${res.status}: ${text}` }));
+      // If the import endpoint fails, fall back to individual sign_up per user in the batch
+      console.warn(`App ID bulk import failed (${res.status}), falling back to per-user sign_up`);
+      for (const u of batch) {
+        try {
+          await createCdUser({ email: u.email, displayName: u.displayName, password: u.password, active: true });
+          result.created += 1;
+        } catch (e) {
+          result.failed.push({
+            email: u.email,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
       continue;
     }
 

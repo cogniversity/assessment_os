@@ -37,12 +37,29 @@ function parseRoleNameList(raw: string | undefined, defaults: string[]): string[
   return list.length ? list : defaults;
 }
 
+function normalizeContextRoot(raw?: string): string {
+  return (raw ?? "").replace(/^\/+|\/+$/g, "");
+}
+
+function withContextRoot(baseUrl: string, contextRoot: string): string {
+  const origin = baseUrl.replace(/\/$/, "");
+  return contextRoot ? `${origin}/${contextRoot}` : origin;
+}
+
+const contextRoot = normalizeContextRoot(process.env.CONTEXT_ROOT);
+const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+const serverUrl = process.env.SERVER_URL || "http://localhost:3001";
+
 export const config = {
   port: parseInt(process.env.PORT || "3001", 10),
   databaseUrl: process.env.DATABASE_URL!,
   sessionSecret: process.env.SESSION_SECRET || "dev-secret-change-me",
-  clientUrl: process.env.CLIENT_URL || "http://localhost:5173",
-  serverUrl: process.env.SERVER_URL || "http://localhost:3001",
+  contextRoot,
+  clientUrl,
+  serverUrl,
+  apiBasePath: contextRoot ? `/${contextRoot}/api` : "/api",
+  clientBaseUrl: withContextRoot(clientUrl, contextRoot),
+  serverBaseUrl: withContextRoot(serverUrl, contextRoot),
   oidc: {
     issuer: process.env.OIDC_ISSUER || "",
     clientId: process.env.OIDC_CLIENT_ID || "",
@@ -50,7 +67,7 @@ export const config = {
     /** Must match browser origin (use CLIENT_URL in dev so session cookie works with Vite proxy). */
     callbackUrl:
       process.env.OIDC_CALLBACK_URL ||
-      `${(process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "")}/api/auth/callback`,
+      `${withContextRoot(clientUrl, contextRoot)}/api/auth/callback`,
   },
   adminEmails: parseEmailList(process.env.ADMIN_EMAILS, "admin@example.com"),
   managerEmails: parseEmailList(process.env.CAPABILITY_MANAGER_EMAILS, "manager@example.com"),

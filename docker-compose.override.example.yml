@@ -4,6 +4,10 @@ services:
     environment:
       CLIENT_URL: https://your-public-host.example.com
       SERVER_URL: https://your-public-host.example.com
-      OIDC_CALLBACK_URL: https://your-public-host.example.com/api/auth/callback
+      CONTEXT_ROOT: growth
+      OIDC_CALLBACK_URL: https://your-public-host.example.com/growth/api/auth/callback
+  client:
+    environment:
+      CONTEXT_ROOT: growth
       SESSION_COOKIE_SECURE: "true"
       RUN_DB_SEED: "false"

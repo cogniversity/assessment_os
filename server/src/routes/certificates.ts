@@ -312,7 +312,7 @@ certificatesRouter.get("/:certNumber/pdf", async (req, res) => {
     expiresAt: cert.expiresAt,
     proficiency: cert.proficiency,
     showProficiency: assessment.showProficiencyOnCert,
-    verifyUrl: `${config.serverUrl}/api/certificates/${cert.certNumber}`,
+    verifyUrl: `${config.serverBaseUrl}/api/certificates/${cert.certNumber}`,
     orgName: config.orgName,
     logoPath: config.logoPath,
   });

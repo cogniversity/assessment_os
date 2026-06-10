@@ -105,7 +105,7 @@ function saveSession(req: ExpressRequest): Promise<void> {
 authRouter.get("/callback", async (req, res) => {
   const oidc = await getOidcConfig();
   if (!oidc) {
-    res.redirect(`${config.clientUrl}/login?error=oidc_not_configured`);
+    res.redirect(`${config.clientBaseUrl}/login?error=oidc_not_configured`);
     return;
   }
   try {
@@ -114,13 +114,13 @@ authRouter.get("/callback", async (req, res) => {
         "OIDC callback: missing session (PKCE/state).",
         {
           callbackUrl: config.oidc.callbackUrl,
-          clientUrl: config.clientUrl,
+          clientUrl: config.clientBaseUrl,
           hasCookieHeader: Boolean(req.headers.cookie),
           sessionId: req.sessionID,
           cookieSecure: process.env.SESSION_COOKIE_SECURE,
         }
       );
-      res.redirect(`${config.clientUrl}/login?error=session_lost`);
+      res.redirect(`${config.clientBaseUrl}/login?error=session_lost`);
       return;
     }
     const currentUrl = oidcCallbackUrl(req);
@@ -177,15 +177,15 @@ authRouter.get("/callback", async (req, res) => {
         : user.role === "capability_manager"
           ? "/manager"
           : "/dashboard";
-    res.redirect(`${config.clientUrl}${redirect}`);
+    res.redirect(`${config.clientBaseUrl}${redirect}`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("OIDC callback failed:", e);
     if (msg.includes("Unique constraint") && msg.includes("email")) {
-      res.redirect(`${config.clientUrl}/login?error=email_link_failed`);
+      res.redirect(`${config.clientBaseUrl}/login?error=email_link_failed`);
       return;
     }
-    res.redirect(`${config.clientUrl}/login?error=auth_failed`);
+    res.redirect(`${config.clientBaseUrl}/login?error=auth_failed`);
   }
 });
 

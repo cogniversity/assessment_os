@@ -174,7 +174,24 @@ cp compose.env.example compose.env
 npm run docker:up
 ```
 
-Open **http://localhost** (or the port set in `HTTP_PORT`).
+Open **http://localhost** (or the port set in `HTTP_PORT`). If `CONTEXT_ROOT` is set (e.g. `growth`), open **http://localhost/growth/** instead.
+
+### Subpath deployment (`CONTEXT_ROOT`)
+
+When the app is served behind nginx under a subpath (e.g. `/growth/`):
+
+```env
+CONTEXT_ROOT=growth
+CLIENT_URL=https://your-host
+SERVER_URL=https://your-host
+OIDC_CALLBACK_URL=https://your-host/growth/api/auth/callback
+```
+
+- `CLIENT_URL` / `SERVER_URL` stay **origin-only** (no path); code appends `CONTEXT_ROOT`.
+- Rebuild the **web** image with the same `CONTEXT_ROOT` (`VITE_CONTEXT_ROOT` is baked in at build time).
+- Register the full OIDC callback URL (including the subpath) in IBM App ID.
+
+Local dev with subpath: `CONTEXT_ROOT=growth VITE_CONTEXT_ROOT=growth npm run dev`, then open `http://localhost:5173/growth/`.
 
 | Task | Command |
 |------|---------|
@@ -205,6 +222,7 @@ Assessment OS integrates with **IBM Cloud App ID** for OIDC single sign-on and C
 2. Add redirect URI:
    - **Local dev:** `http://localhost:5173/api/auth/callback` (must match the browser URL — Vite dev server)
    - **Docker/production:** `https://your-host/api/auth/callback`
+   - **With `CONTEXT_ROOT=growth`:** `https://your-host/growth/api/auth/callback` (and `http://localhost:5173/growth/api/auth/callback` for local subpath dev)
 3. Set in `.env` (and optionally `server/.env` for App ID keys):
 
    ```env
@@ -248,6 +266,7 @@ The API key needs **Manager** access on the App ID instance (IBM Cloud → IAM �
 |----------|---------|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `SESSION_SECRET` | Session signing (required in production) |
+| `CONTEXT_ROOT` | Optional nginx subpath segment (e.g. `growth` → `/growth/`) |
 | `OIDC_*` | IBM App ID / OIDC provider |
 | `ADMIN_EMAILS`, `CAPABILITY_MANAGER_EMAILS` | RBAC email allowlists |
 | `APPID_IAM_APIKEY`, `APPID_TENANT_ID` | Cloud Directory management API |

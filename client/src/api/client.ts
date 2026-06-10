@@ -1,4 +1,4 @@
-const API = "/api";
+import { apiPrefix } from "../config/paths";
 
 function apiErrorMessage(err: {
   error?: string;
@@ -30,7 +30,7 @@ export async function api<T>(
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(options.json);
   }
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${apiPrefix}${path}`, {
     ...options,
     headers,
     body,
@@ -45,7 +45,7 @@ export async function api<T>(
 }
 
 export async function apiForm<T>(path: string, formData: FormData): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(`${apiPrefix}${path}`, {
     method: "POST",
     body: formData,
     credentials: "include",
@@ -58,5 +58,5 @@ export async function apiForm<T>(path: string, formData: FormData): Promise<T> {
 }
 
 export function downloadUrl(path: string) {
-  return `${API}${path}`;
+  return `${apiPrefix}${path}`;
 }

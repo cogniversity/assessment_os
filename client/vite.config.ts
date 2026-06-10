@@ -6,7 +6,11 @@ import tailwindcss from "@tailwindcss/vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const contextRoot = (process.env.VITE_CONTEXT_ROOT ?? "").replace(/^\/+|\/+$/g, "");
+const apiProxyPath = contextRoot ? `/${contextRoot}/api` : "/api";
+
 export default defineConfig({
+  base: contextRoot ? `/${contextRoot}/` : "/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
@@ -16,7 +20,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": {
+      [apiProxyPath]: {
         target: "http://localhost:3001",
         changeOrigin: true,
         cookieDomainRewrite: "localhost",

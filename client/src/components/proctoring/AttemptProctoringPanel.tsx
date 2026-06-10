@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
+import { absoluteApiPath } from "../../config/paths";
 import { PROCTORING_EVENT_LABELS } from "@assessment-os/shared";
 import { Camera, AlertTriangle, Copy, Monitor, Eye, Info } from "lucide-react";
 import { Badge } from "../Layout";
@@ -106,7 +107,7 @@ export function AttemptProctoringPanel({ attemptId }: Props) {
             {photos.map((p) => (
               <div key={p.id} className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-square group">
                 <img
-                  src={`/api/photos/${p.filePath}`}
+                  src={absoluteApiPath(`/photos/${p.filePath}`)}
                   alt={`${p.kind} photo`}
                   className="w-full h-full object-cover"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}

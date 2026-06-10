@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiForm, downloadUrl } from "../../api/client";
+import { absoluteApiPath } from "../../config/paths";
 import { Card, Button, SectionHeader } from "../../components/Layout";
 import { Download, Upload, FileJson, AlertTriangle, CheckCircle2 } from "lucide-react";
 
@@ -64,7 +65,7 @@ function SectionPicker({
 }
 
 async function downloadBundle(sections: SectionId[]) {
-  const res = await fetch("/api/admin/data-transfer/export", {
+  const res = await fetch(absoluteApiPath("/admin/data-transfer/export"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",

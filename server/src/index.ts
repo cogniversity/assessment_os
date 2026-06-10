@@ -61,20 +61,21 @@ async function main() {
     })
   );
 
-  app.use("/api/auth", authRouter);
-  app.use("/api/assignments", assignmentsRouter);
-  app.use("/api/assessments", assessmentsRouter);
-  app.use("/api/attempts", attemptsRouter);
-  app.use("/api/admin", adminRouter);
-  app.use("/api/manager", managerRouter);
-  app.use("/api/profile", profileRouter);
-  app.use("/api/certificates", certificatesRouter);
-  app.use("/api/analytics", analyticsRouter);
-  app.use("/api/photos", photosRouter);
-  app.use("/api/question-import", questionImportTemplateRouter);
-  app.use("/api/reattempt-requests", reattemptRequestsRouter);
+  const api = config.apiBasePath;
+  app.use(`${api}/auth`, authRouter);
+  app.use(`${api}/assignments`, assignmentsRouter);
+  app.use(`${api}/assessments`, assessmentsRouter);
+  app.use(`${api}/attempts`, attemptsRouter);
+  app.use(`${api}/admin`, adminRouter);
+  app.use(`${api}/manager`, managerRouter);
+  app.use(`${api}/profile`, profileRouter);
+  app.use(`${api}/certificates`, certificatesRouter);
+  app.use(`${api}/analytics`, analyticsRouter);
+  app.use(`${api}/photos`, photosRouter);
+  app.use(`${api}/question-import`, questionImportTemplateRouter);
+  app.use(`${api}/reattempt-requests`, reattemptRequestsRouter);
 
-  app.get("/api/health", (_req, res) => res.json({ ok: true }));
+  app.get(`${api}/health`, (_req, res) => res.json({ ok: true }));
 
   app.use(errorHandler);
 
