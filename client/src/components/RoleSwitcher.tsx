@@ -17,6 +17,7 @@ export function RoleSwitcher({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const grantedRoles = user ? normalizeGrantedRoles(user.roles) : [];
   const activeRole = user?.activeRole ?? user?.role ?? "candidate";
@@ -35,7 +36,7 @@ export function RoleSwitcher({ compact = false }: { compact?: boolean }) {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (ref.current?.contains(target)) return;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
       setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
@@ -58,13 +59,19 @@ export function RoleSwitcher({ compact = false }: { compact?: boolean }) {
       setOpen(false);
       return;
     }
-    await switchRole(role);
-    setOpen(false);
-    navigate(homeForRole(role));
+    try {
+      await switchRole(role);
+      setOpen(false);
+      navigate(homeForRole(role));
+    } catch (err) {
+      console.error("Role switch failed:", err);
+      setOpen(false);
+    }
   };
 
   const menu = open ? (
     <div
+      ref={menuRef}
       className="fixed w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-[9999] py-1"
       style={{ top: menuPos.top, left: menuPos.left }}
     >
