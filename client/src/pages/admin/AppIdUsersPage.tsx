@@ -20,6 +20,7 @@ interface CdUser {
   meta?: { created?: string; lastModified?: string };
   appIdRoles?: string[];
   appUserId?: string | null;
+  appRoles?: string[] | null;
   appRole?: string | null;
 }
 
@@ -478,7 +479,11 @@ export default function AppIdUsersPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-600">
-                        {u.appUserId ? u.appRole ?? "—" : <span className="text-xs text-slate-400">—</span>}
+                        {u.appUserId ? (
+                          (u.appRoles?.length ? u.appRoles.join(", ") : u.appRole) ?? "—"
+                        ) : (
+                          <span className="text-xs text-slate-400">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm align-top">
                         <div className="flex flex-col gap-1">
@@ -490,7 +495,7 @@ export default function AppIdUsersPage() {
                           >
                             {u.appUserId ? "Re-sync to app" : "Sync to app"}
                           </button>
-                          {u.appUserId && u.appRole === "candidate" && (
+                          {u.appUserId && (u.appRoles?.includes("candidate") || u.appRole === "candidate") && (
                             <Link
                               to={`/admin/candidates/${u.appUserId}`}
                               className="text-slate-500 hover:text-indigo-600 text-xs"

@@ -69,7 +69,7 @@ function localSearchWhere(q: string) {
 /**
  * Candidates for assessment assignment: local DB (candidate + capability_manager) merged with
  * IBM Cloud Directory users (deduped by email). App ID-only rows need provision on assign.
- * u.appRole = linked local User.role; u.appIdRoles = IBM Profiles & roles.
+ * u.appRole = linked local User.roles; u.appIdRoles = IBM Profiles & roles.
  */
 export async function listAssignmentCandidates(opts: { q?: string }): Promise<{
   candidates: AssignmentCandidate[];
@@ -81,7 +81,7 @@ export async function listAssignmentCandidates(opts: { q?: string }): Promise<{
 
   const localUsers = await prisma.user.findMany({
     where: {
-      role: { in: ["candidate", "capability_manager"] },
+      roles: { hasSome: ["candidate", "capability_manager"] },
       ...(q ? localSearchWhere(q) : {}),
     },
     include: { profile: true },
@@ -117,7 +117,15 @@ export async function listAssignmentCandidates(opts: { q?: string }): Promise<{
         const email = primaryEmail(u);
         if (!email) continue;
 
-        if (!isAssignmentEligible({ localRole: u.appRole, appIdRoles: u.appIdRoles })) continue;
+        if (
+          !isAssignmentEligible({
+            localRoles: u.appRoles as ("admin" | "capability_manager" | "candidate")[] | undefined,
+            localRole: u.appRole,
+            appIdRoles: u.appIdRoles,
+          })
+        ) {
+          continue;
+        }
 
         const profile = byEmail.get(email);
         if (!q || cd.listMode === "search" || cdUserMatchesQuery(u, q, profile)) {
@@ -135,7 +143,14 @@ export async function listAssignmentCandidates(opts: { q?: string }): Promise<{
             continue;
           }
 
-          const linkedLocal = Boolean(u.appUserId && u.appRole !== "admin");
+          const linkedLocal = Boolean(
+            u.appUserId &&
+              isAssignmentEligible({
+                localRoles: u.appRoles as ("admin" | "capability_manager" | "candidate")[] | undefined,
+                localRole: u.appRole,
+                appIdRoles: u.appIdRoles,
+              })
+          );
           byEmail.set(email, {
             key: u.appUserId ?? `email:${email}`,
             userId: linkedLocal ? u.appUserId! : null,

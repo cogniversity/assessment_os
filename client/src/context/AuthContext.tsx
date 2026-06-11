@@ -1,19 +1,30 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { api } from "../api/client";
+import type { Role } from "@assessment-os/shared";
 
 export interface User {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "capability_manager" | "candidate";
+  roles: Role[];
+  activeRole: Role;
+  /** Effective role alias from API */
+  role: Role;
 }
 
 const AuthContext = createContext<{
   user: User | null;
   loading: boolean;
   refresh: () => Promise<void>;
+  switchRole: (role: Role) => Promise<void>;
   logout: () => Promise<void>;
-}>({ user: null, loading: true, refresh: async () => {}, logout: async () => {} });
+}>({
+  user: null,
+  loading: true,
+  refresh: async () => {},
+  switchRole: async () => {},
+  logout: async () => {},
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -34,13 +45,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh();
   }, []);
 
+  const switchRole = async (role: Role) => {
+    const u = await api<User>("/auth/switch-role", { method: "POST", json: { role } });
+    setUser(u);
+  };
+
   const logout = async () => {
     await api("/auth/logout", { method: "POST" });
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, refresh, logout }}>
+    <AuthContext.Provider value={{ user, loading, refresh, switchRole, logout }}>
       {children}
     </AuthContext.Provider>
   );

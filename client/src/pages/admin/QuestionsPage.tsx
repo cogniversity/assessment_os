@@ -12,6 +12,12 @@ interface SkillRole {
   name: string;
 }
 
+interface Concept {
+  id: string;
+  code: string;
+  name: string;
+}
+
 interface Question {
   id: string;
   stem: string;
@@ -21,9 +27,14 @@ interface Question {
   topic: { id: string; name: string };
   skill: { id: string; code: string; name: string };
   skillRoles: { skillRole: SkillRole }[];
+  concepts?: { concept: Concept }[];
   options: string[];
   correctIndices: number[];
   explanation?: string;
+}
+
+function questionConcepts(q: Question): Concept[] {
+  return (q.concepts ?? []).map((c) => c.concept);
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -50,10 +61,12 @@ export default function QuestionsPage() {
   const { user } = useAuth();
   const isManager = user?.role === "capability_manager";
   const [toast, setToast] = useState("");
-  const [editingRolesId, setEditingRolesId] = useState<string | null>(null);
+  const [editingMetaId, setEditingMetaId] = useState<string | null>(null);
   const [editingRoleIds, setEditingRoleIds] = useState<string[]>([]);
+  const [editingConceptIds, setEditingConceptIds] = useState<string[]>([]);
   const [filters, setFilters] = useState({ topicId: "", skillId: "", status: "", skillRoleId: "", difficulty: "" });
   const [missingRolesOnly, setMissingRolesOnly] = useState(false);
+  const [missingConceptsOnly, setMissingConceptsOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkRoleIds, setBulkRoleIds] = useState<string[]>([]);
   const [showBulkRoles, setShowBulkRoles] = useState(false);
@@ -124,10 +137,15 @@ export default function QuestionsPage() {
     queryFn: () => api<Question[]>(`/admin/questions?${qParams}`),
   });
 
-  const editingQuestion = questions.data?.find((q) => q.id === editingRolesId);
+  const editingQuestion = questions.data?.find((q) => q.id === editingMetaId);
   const editSkillRoles = useQuery({
     queryKey: ["skill-roles", editingQuestion?.skill.id],
     queryFn: () => api<SkillRole[]>(`/admin/skills/${editingQuestion!.skill.id}/roles`),
+    enabled: !!editingQuestion?.skill.id,
+  });
+  const editSkillConcepts = useQuery({
+    queryKey: ["skill-concepts", editingQuestion?.skill.id],
+    queryFn: () => api<Concept[]>(`/admin/skills/${editingQuestion!.skill.id}/concepts`),
     enabled: !!editingQuestion?.skill.id,
   });
 
@@ -201,19 +219,31 @@ export default function QuestionsPage() {
     },
   });
 
-  const updateRoles = useMutation({
-    mutationFn: ({ id, skillRoleIds }: { id: string; skillRoleIds: string[] }) =>
-      api<Question>(`/admin/questions/${id}`, { method: "PUT", json: { skillRoleIds } }),
+  const updateQuestionMeta = useMutation({
+    mutationFn: ({
+      id,
+      skillRoleIds,
+      conceptIds,
+    }: {
+      id: string;
+      skillRoleIds: string[];
+      conceptIds: string[];
+    }) =>
+      api<Question>(`/admin/questions/${id}`, {
+        method: "PUT",
+        json: { skillRoleIds, conceptIds },
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["questions"] });
-      setEditingRolesId(null);
-      showToast("Skill roles updated");
+      setEditingMetaId(null);
+      showToast("Question updated");
     },
   });
 
-  function startEditRoles(q: Question) {
-    setEditingRolesId(q.id);
+  function startEditMeta(q: Question) {
+    setEditingMetaId(q.id);
     setEditingRoleIds(q.skillRoles.map((r) => r.skillRole.id));
+    setEditingConceptIds(questionConcepts(q).map((c) => c.id));
   }
 
   function toggleSelected(id: string) {
@@ -289,12 +319,15 @@ export default function QuestionsPage() {
   };
 
   const visibleQuestions = useMemo(() => {
-    const rows = questions.data ?? [];
-    if (!missingRolesOnly) return rows;
-    return rows.filter((q) => q.skillRoles.length === 0);
-  }, [questions.data, missingRolesOnly]);
+    let rows = questions.data ?? [];
+    if (missingRolesOnly) rows = rows.filter((q) => q.skillRoles.length === 0);
+    if (missingConceptsOnly) rows = rows.filter((q) => questionConcepts(q).length === 0);
+    return rows;
+  }, [questions.data, missingRolesOnly, missingConceptsOnly]);
 
   const missingRolesCount = questions.data?.filter((q) => q.skillRoles.length === 0).length ?? 0;
+  const missingConceptsCount =
+    questions.data?.filter((q) => questionConcepts(q).length === 0).length ?? 0;
 
   const selectedQuestions = visibleQuestions.filter((q) => selectedIds.includes(q.id));
   const selectedSkillIds = new Set(selectedQuestions.map((q) => q.skill.id));
@@ -355,6 +388,14 @@ export default function QuestionsPage() {
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900">
           <strong>{missingRolesCount} question{missingRolesCount !== 1 ? "s" : ""} missing skill roles.</strong>{" "}
           Use bulk actions below, or <strong>Assign roles</strong> per row. Add roles on{" "}
+          <Link to="/admin/skills" className="underline font-medium">Skills</Link> if none exist for that skill.
+        </div>
+      )}
+
+      {missingConceptsCount > 0 && (
+        <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-sm text-teal-900">
+          <strong>{missingConceptsCount} question{missingConceptsCount !== 1 ? "s" : ""} missing concepts.</strong>{" "}
+          Use <strong>Assign concepts</strong> or the pencil icon per row. Add concepts on{" "}
           <Link to="/admin/skills" className="underline font-medium">Skills</Link> if none exist for that skill.
         </div>
       )}
@@ -512,20 +553,37 @@ export default function QuestionsPage() {
             <option value="published">Published only</option>
           </Select>
         </div>
-        <label className="flex items-center gap-2 mt-3 text-sm text-slate-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={missingRolesOnly}
-            onChange={(e) => setMissingRolesOnly(e.target.checked)}
-            className="rounded border-slate-300 accent-indigo-600"
-          />
-          Show only questions missing skill roles
-        </label>
+        <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={missingRolesOnly}
+              onChange={(e) => setMissingRolesOnly(e.target.checked)}
+              className="rounded border-slate-300 accent-indigo-600"
+            />
+            Show only questions missing skill roles
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={missingConceptsOnly}
+              onChange={(e) => setMissingConceptsOnly(e.target.checked)}
+              className="rounded border-slate-300 accent-indigo-600"
+            />
+            Show only questions missing concepts
+          </label>
+        </div>
       </Card>
 
       {visibleQuestions.length === 0 && !questions.isLoading && (
         <p className="text-sm text-slate-500">
-          {missingRolesOnly ? "No questions missing skill roles." : "No questions match these filters."}
+          {missingRolesOnly && missingConceptsOnly
+            ? "No questions missing skill roles and concepts."
+            : missingRolesOnly
+              ? "No questions missing skill roles."
+              : missingConceptsOnly
+                ? "No questions missing concepts."
+                : "No questions match these filters."}
         </p>
       )}
 
@@ -550,6 +608,19 @@ export default function QuestionsPage() {
                         ? "No skill roles"
                         : q.skillRoles.map((r) => r.skillRole.code).join(", ")}
                     </span>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        questionConcepts(q).length === 0
+                          ? "bg-teal-50 text-teal-700"
+                          : "bg-teal-100 text-teal-800"
+                      }`}
+                    >
+                      {questionConcepts(q).length === 0
+                        ? "No concepts"
+                        : questionConcepts(q)
+                            .map((c) => c.code)
+                            .join(", ")}
+                    </span>
                     <span className={`text-xs px-2 py-0.5 rounded ${q.difficulty === "hard" ? "bg-red-100 text-red-700" : q.difficulty === "medium" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>{q.difficulty}</span>
                   </div>
                   <p className="text-sm font-medium">{q.stem}</p>
@@ -560,58 +631,100 @@ export default function QuestionsPage() {
                       </li>
                     ))}
                   </ol>
-                  {editingRolesId === q.id && (
-                    <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                  {editingMetaId === q.id && (
+                    <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-4">
                       <p className="text-xs font-semibold text-slate-700">
-                        Skill roles for {q.skill.code} – {q.skill.name}
+                        Skill roles &amp; concepts for {q.skill.code} – {q.skill.name}
                       </p>
-                      {editSkillRoles.isLoading && (
-                        <p className="text-xs text-slate-500">Loading roles…</p>
-                      )}
-                      {!editSkillRoles.isLoading && (editSkillRoles.data?.length ?? 0) === 0 && (
-                        <p className="text-xs text-amber-800">
-                          No roles exist for this skill yet. Open{" "}
-                          <Link to="/admin/skills" className="underline font-medium">Skills</Link>, expand{" "}
-                          <strong>{q.skill.name}</strong>, and add a role (e.g. ASSOC, SR_DEV), then return here.
-                        </p>
-                      )}
-                      {(editSkillRoles.data?.length ?? 0) > 0 && (
-                        <div className="space-y-1.5">
-                          {editSkillRoles.data!.map((r) => (
-                            <label key={r.id} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={editingRoleIds.includes(r.id)}
-                                onChange={(e) => {
-                                  setEditingRoleIds((prev) =>
-                                    e.target.checked ? [...prev, r.id] : prev.filter((id) => id !== r.id)
-                                  );
-                                }}
-                                className="rounded border-slate-300 accent-indigo-600"
-                              />
-                              <span className="font-mono text-xs text-indigo-700">{r.code}</span>
-                              <span>{r.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-slate-600">Skill roles *</p>
+                        {editSkillRoles.isLoading && (
+                          <p className="text-xs text-slate-500">Loading roles…</p>
+                        )}
+                        {!editSkillRoles.isLoading && (editSkillRoles.data?.length ?? 0) === 0 && (
+                          <p className="text-xs text-amber-800">
+                            No roles exist for this skill yet. Open{" "}
+                            <Link to="/admin/skills" className="underline font-medium">Skills</Link>, expand{" "}
+                            <strong>{q.skill.name}</strong>, and add a role (e.g. ASSOC, SR_DEV), then return here.
+                          </p>
+                        )}
+                        {(editSkillRoles.data?.length ?? 0) > 0 && (
+                          <div className="space-y-1.5">
+                            {editSkillRoles.data!.map((r) => (
+                              <label key={r.id} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={editingRoleIds.includes(r.id)}
+                                  onChange={(e) => {
+                                    setEditingRoleIds((prev) =>
+                                      e.target.checked ? [...prev, r.id] : prev.filter((id) => id !== r.id)
+                                    );
+                                  }}
+                                  className="rounded border-slate-300 accent-indigo-600"
+                                />
+                                <span className="font-mono text-xs text-indigo-700">{r.code}</span>
+                                <span>{r.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-slate-600">Concepts (optional)</p>
+                        {editSkillConcepts.isLoading && (
+                          <p className="text-xs text-slate-500">Loading concepts…</p>
+                        )}
+                        {!editSkillConcepts.isLoading && (editSkillConcepts.data?.length ?? 0) === 0 && (
+                          <p className="text-xs text-teal-800">
+                            No concepts for this skill yet. Open{" "}
+                            <Link to="/admin/skills" className="underline font-medium">Skills</Link>, expand{" "}
+                            <strong>{q.skill.name}</strong>, and add concepts, then return here.
+                          </p>
+                        )}
+                        {(editSkillConcepts.data?.length ?? 0) > 0 && (
+                          <div className="space-y-1.5">
+                            {editSkillConcepts.data!.map((c) => (
+                              <label key={c.id} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={editingConceptIds.includes(c.id)}
+                                  onChange={(e) => {
+                                    setEditingConceptIds((prev) =>
+                                      e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)
+                                    );
+                                  }}
+                                  className="rounded border-slate-300 accent-teal-600"
+                                />
+                                <span className="font-mono text-xs text-teal-700">{c.code}</span>
+                                <span>{c.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <div className="flex gap-2">
                         <Button
                           disabled={
                             editingRoleIds.length === 0 ||
-                            updateRoles.isPending ||
+                            updateQuestionMeta.isPending ||
                             (editSkillRoles.data?.length ?? 0) === 0
                           }
-                          onClick={() => updateRoles.mutate({ id: q.id, skillRoleIds: editingRoleIds })}
+                          onClick={() =>
+                            updateQuestionMeta.mutate({
+                              id: q.id,
+                              skillRoleIds: editingRoleIds,
+                              conceptIds: editingConceptIds,
+                            })
+                          }
                         >
-                          Save roles
+                          Save
                         </Button>
-                        <Button variant="secondary" onClick={() => setEditingRolesId(null)}>
+                        <Button variant="secondary" onClick={() => setEditingMetaId(null)}>
                           Cancel
                         </Button>
                       </div>
-                      {updateRoles.isError && (
-                        <p className="text-xs text-red-600">{(updateRoles.error as Error).message}</p>
+                      {updateQuestionMeta.isError && (
+                        <p className="text-xs text-red-600">{(updateQuestionMeta.error as Error).message}</p>
                       )}
                     </div>
                   )}
@@ -620,9 +733,17 @@ export default function QuestionsPage() {
                   {q.skillRoles.length === 0 && (
                     <Button
                       variant="primary"
-                      onClick={() => (editingRolesId === q.id ? setEditingRolesId(null) : startEditRoles(q))}
+                      onClick={() => (editingMetaId === q.id ? setEditingMetaId(null) : startEditMeta(q))}
                     >
                       Assign roles
+                    </Button>
+                  )}
+                  {q.skillRoles.length > 0 && questionConcepts(q).length === 0 && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => (editingMetaId === q.id ? setEditingMetaId(null) : startEditMeta(q))}
+                    >
+                      Assign concepts
                     </Button>
                   )}
                   <div className="flex gap-1">
@@ -638,8 +759,8 @@ export default function QuestionsPage() {
                   {q.skillRoles.length > 0 && (
                     <Button
                       variant="secondary"
-                      onClick={() => (editingRolesId === q.id ? setEditingRolesId(null) : startEditRoles(q))}
-                      title="Edit skill roles"
+                      onClick={() => (editingMetaId === q.id ? setEditingMetaId(null) : startEditMeta(q))}
+                      title="Edit skill roles & concepts"
                     >
                       <Pencil size={14} />
                     </Button>

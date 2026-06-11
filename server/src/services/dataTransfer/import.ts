@@ -13,6 +13,14 @@ import {
   type SectionCounts,
 } from "./types.js";
 
+function userRolesFromImport(r: Record<string, unknown>): ("admin" | "capability_manager" | "candidate")[] {
+  if (Array.isArray(r.roles) && r.roles.length > 0) {
+    return r.roles.map(String) as ("admin" | "capability_manager" | "candidate")[];
+  }
+  if (r.role) return [String(r.role) as "admin" | "capability_manager" | "candidate"];
+  return ["candidate"];
+}
+
 class IdMap {
   private maps = new Map<string, Map<string, string>>();
 
@@ -167,7 +175,7 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
           id: String(r.id),
           email,
           name: String(r.name),
-          role: r.role as never,
+          roles: userRolesFromImport(r),
           oidcSub: r.oidcSub != null ? String(r.oidcSub) : null,
           ...optionalDateFields(r, ["createdAt", "updatedAt"]),
         },
@@ -181,7 +189,7 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
           id: newId,
           email,
           name: String(r.name),
-          role: r.role as never,
+          roles: userRolesFromImport(r),
           oidcSub: r.oidcSub != null ? String(r.oidcSub) : null,
           ...optionalDateFields(r, ["createdAt", "updatedAt"]),
         },

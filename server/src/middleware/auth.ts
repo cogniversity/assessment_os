@@ -1,9 +1,17 @@
 import { Request, Response, NextFunction } from "express";
 import type { User } from "@prisma/client";
 import { prisma } from "../db.js";
-import { Role } from "@assessment-os/shared";
+import { Role, highestRole, type Role as AppRole } from "@assessment-os/shared";
 
-export type AuthedRequest = Request & { user: User };
+export type AuthedRequest = Request & {
+  user: User & { role: AppRole };
+  grantedRoles: AppRole[];
+};
+
+function resolveActiveRole(sessionActive: AppRole | undefined, granted: AppRole[]): AppRole {
+  if (sessionActive && granted.includes(sessionActive)) return sessionActive;
+  return highestRole(granted);
+}
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const userId = req.session.userId;
@@ -11,13 +19,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
+  const dbUser = await prisma.user.findUnique({ where: { id: userId } });
+  if (!dbUser) {
     req.session.destroy(() => {});
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  (req as AuthedRequest).user = user;
+  const grantedRoles = dbUser.roles as AppRole[];
+  const activeRole = resolveActiveRole(req.session.activeRole as AppRole | undefined, grantedRoles);
+  req.session.activeRole = activeRole;
+  (req as AuthedRequest).grantedRoles = grantedRoles;
+  (req as AuthedRequest).user = { ...dbUser, role: activeRole };
   next();
 }
 
@@ -63,6 +75,10 @@ export const requireAdminOrManager = [
 ] as const;
 export const requireAnyAuth = [requireAuth] as const;
 
-export function getUser(req: Request): User {
+export function getUser(req: Request): User & { role: AppRole } {
   return (req as AuthedRequest).user;
+}
+
+export function getGrantedRoles(req: Request): AppRole[] {
+  return (req as AuthedRequest).grantedRoles;
 }

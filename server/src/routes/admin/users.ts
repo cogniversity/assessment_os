@@ -3,6 +3,8 @@ import { prisma } from "../../db.js";
 import { z } from "zod";
 import { provisionCandidateUser } from "../../services/userProvision.js";
 
+const roleEnum = z.enum(["admin", "capability_manager", "candidate"]);
+
 export const usersRouter = Router();
 
 usersRouter.get("/", async (req, res) => {
@@ -11,7 +13,7 @@ usersRouter.get("/", async (req, res) => {
   res.json(
     await prisma.user.findMany({
       where: {
-        ...(role && { role: role as never }),
+        ...(role && { roles: { has: role as never } }),
         ...(q && {
           OR: [
             { email: { contains: q, mode: "insensitive" } },
@@ -30,7 +32,7 @@ usersRouter.get("/candidates", async (req, res) => {
   res.json(
     await prisma.user.findMany({
       where: {
-        role: "candidate",
+        roles: { has: "candidate" },
         ...(q && {
           OR: [
             { email: { contains: q, mode: "insensitive" } },
@@ -53,7 +55,7 @@ usersRouter.post("/provision", async (req, res, next) => {
       .object({
         email: z.string().email(),
         name: z.string().min(1).optional(),
-        role: z.enum(["admin", "capability_manager", "candidate"]).default("candidate"),
+        role: roleEnum.default("candidate"),
       })
       .parse(req.body);
 
@@ -68,10 +70,34 @@ usersRouter.post("/provision", async (req, res, next) => {
   }
 });
 
+usersRouter.patch("/:id/roles", async (req, res, next) => {
+  try {
+    const { roles } = z
+      .object({
+        roles: z.array(roleEnum).min(1),
+      })
+      .parse(req.body);
+    res.json(
+      await prisma.user.update({
+        where: { id: req.params.id },
+        data: { roles },
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+/** @deprecated use PATCH /:id/roles */
 usersRouter.patch("/:id/role", async (req, res, next) => {
   try {
-    const { role } = z.object({ role: z.enum(["admin", "capability_manager", "candidate"]) }).parse(req.body);
-    res.json(await prisma.user.update({ where: { id: req.params.id }, data: { role } }));
+    const { role } = z.object({ role: roleEnum }).parse(req.body);
+    res.json(
+      await prisma.user.update({
+        where: { id: req.params.id },
+        data: { roles: [role] },
+      })
+    );
   } catch (e) {
     next(e);
   }

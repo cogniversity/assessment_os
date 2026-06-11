@@ -1,19 +1,31 @@
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
-import { Card, Select } from "../../components/Layout";
+import { Card } from "../../components/Layout";
+import { ROLE_LABELS, type Role } from "@assessment-os/shared";
+
+const ALL_ROLES: Role[] = ["admin", "capability_manager", "candidate"];
+
+type AppUser = { id: string; email: string; name: string; roles: Role[] };
 
 export default function UsersPage() {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["users"],
-    queryFn: () => api<{ id: string; email: string; name: string; role: string }[]>("/admin/users"),
+    queryFn: () => api<AppUser[]>("/admin/users"),
   });
-  const updateRole = useMutation({
-    mutationFn: ({ id, role }: { id: string; role: string }) =>
-      api(`/admin/users/${id}/role`, { method: "PATCH", json: { role } }),
+  const updateRoles = useMutation({
+    mutationFn: ({ id, roles }: { id: string; roles: Role[] }) =>
+      api(`/admin/users/${id}/roles`, { method: "PATCH", json: { roles } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
+
+  const toggleRole = (user: AppUser, role: Role) => {
+    const has = user.roles.includes(role);
+    const next = has ? user.roles.filter((r) => r !== role) : [...user.roles, role];
+    if (next.length === 0) return;
+    updateRoles.mutate({ id: user.id, roles: next });
+  };
 
   return (
     <div>
@@ -24,7 +36,8 @@ export default function UsersPage() {
           App ID Users
         </Link>
         ). Use <strong>Staffing profile</strong> to edit country, employee ID, and related fields for any user.
-        App role here controls access inside Assessment OS; IBM App ID roles are edited on the App ID Users page.
+        App roles control access inside Assessment OS; users with multiple roles can switch in the header.
+        IBM App ID roles are edited on the App ID Users page.
       </p>
       <Card>
         {!data?.length ? (
@@ -42,7 +55,7 @@ export default function UsersPage() {
               <tr className="text-left border-b">
                 <th className="py-2">Name</th>
                 <th>Email</th>
-                <th>App role</th>
+                <th>App roles</th>
                 <th></th>
               </tr>
             </thead>
@@ -52,14 +65,19 @@ export default function UsersPage() {
                   <td className="py-2">{u.name}</td>
                   <td>{u.email}</td>
                   <td>
-                    <Select
-                      value={u.role}
-                      onChange={(e) => updateRole.mutate({ id: u.id, role: e.target.value })}
-                    >
-                      <option value="candidate">candidate</option>
-                      <option value="capability_manager">capability_manager</option>
-                      <option value="admin">admin</option>
-                    </Select>
+                    <div className="flex flex-wrap gap-3">
+                      {ALL_ROLES.map((role) => (
+                        <label key={role} className="inline-flex items-center gap-1.5 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={u.roles.includes(role)}
+                            disabled={updateRoles.isPending}
+                            onChange={() => toggleRole(u, role)}
+                          />
+                          {ROLE_LABELS[role]}
+                        </label>
+                      ))}
+                    </div>
                   </td>
                   <td className="py-2 text-right">
                     <Link

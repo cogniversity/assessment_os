@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { Role } from "@assessment-os/shared";
+import { Role, highestRole, mergeRoles, type Role as AppRole } from "@assessment-os/shared";
 
 /** Extract IBM App ID / OIDC role names from token or userinfo claims. */
 export function appIdRolesFromClaims(claims: Record<string, unknown> | undefined): string[] {
@@ -39,54 +39,69 @@ export function matchesRoleName(configured: string[], appIdRoles: string[]): boo
 
 /** Whether a user may appear in the assessment assignment candidate picker. */
 export function isAssignmentEligible(opts: {
+  localRoles?: AppRole[];
+  /** @deprecated use localRoles */
   localRole?: string | null;
   appIdRoles?: string[];
 }): boolean {
-  const { localRole, appIdRoles = [] } = opts;
+  const { localRoles, appIdRoles = [] } = opts;
+  const roles =
+    localRoles ??
+    (opts.localRole ? [opts.localRole as AppRole] : []);
 
-  if (localRole === Role.ADMIN) return false;
+  if (roles.includes(Role.ADMIN)) return false;
   if (matchesRoleName(config.appIdRoleAdmin, appIdRoles)) return false;
 
-  if (localRole === Role.CANDIDATE || localRole === Role.CAPABILITY_MANAGER) return true;
+  if (roles.includes(Role.CANDIDATE) || roles.includes(Role.CAPABILITY_MANAGER)) return true;
   if (matchesRoleName(config.appIdRoleCandidate, appIdRoles)) return true;
   if (matchesRoleName(config.appIdRoleManager, appIdRoles)) return true;
 
   // Unlinked Cloud Directory user with no admin IBM role
-  if (!localRole) return true;
+  if (roles.length === 0) return true;
 
   return false;
 }
 
 /**
- * Map login to app RBAC.
- * When IBM App ID returns roles, those are checked first (admin → manager → candidate).
+ * Map login to all app RBAC roles the user holds.
+ * When IBM App ID returns roles, all matching app roles are included.
  * Otherwise falls back to ADMIN_EMAILS / CAPABILITY_MANAGER_EMAILS / OIDC sub lists.
  */
+export function resolveAppRoles(
+  email: string,
+  oidcSub: string | undefined,
+  appIdRoles: string[]
+): AppRole[] {
+  const roles = new Set<AppRole>();
+
+  if (appIdRoles.length > 0) {
+    if (matchesRoleName(config.appIdRoleAdmin, appIdRoles)) roles.add(Role.ADMIN);
+    if (matchesRoleName(config.appIdRoleManager, appIdRoles)) roles.add(Role.CAPABILITY_MANAGER);
+    if (matchesRoleName(config.appIdRoleCandidate, appIdRoles)) roles.add(Role.CANDIDATE);
+  }
+
+  if (roles.size === 0) {
+    const normalized = email.trim().toLowerCase();
+    if (config.adminEmails.includes(normalized)) roles.add(Role.ADMIN);
+    if (config.managerEmails.includes(normalized)) roles.add(Role.CAPABILITY_MANAGER);
+    if (oidcSub && config.adminOidcSubs.includes(oidcSub)) roles.add(Role.ADMIN);
+    if (oidcSub && config.managerOidcSubs.includes(oidcSub)) roles.add(Role.CAPABILITY_MANAGER);
+  }
+
+  if (roles.size === 0) roles.add(Role.CANDIDATE);
+  return [...roles];
+}
+
+/** Highest-privilege role (admin > capability_manager > candidate). */
 export function resolveAppRole(
   email: string,
   oidcSub: string | undefined,
   appIdRoles: string[]
-): "admin" | "capability_manager" | "candidate" {
-  if (appIdRoles.length > 0) {
-    if (matchesRoleName(config.appIdRoleAdmin, appIdRoles)) {
-      return Role.ADMIN as "admin";
-    }
-    if (matchesRoleName(config.appIdRoleManager, appIdRoles)) {
-      return Role.CAPABILITY_MANAGER as "capability_manager";
-    }
-    if (matchesRoleName(config.appIdRoleCandidate, appIdRoles)) {
-      return Role.CANDIDATE as "candidate";
-    }
-  }
+): AppRole {
+  return highestRole(resolveAppRoles(email, oidcSub, appIdRoles));
+}
 
-  const normalized = email.trim().toLowerCase();
-  if (config.adminEmails.includes(normalized)) return Role.ADMIN as "admin";
-  if (config.managerEmails.includes(normalized)) {
-    return Role.CAPABILITY_MANAGER as "capability_manager";
-  }
-  if (oidcSub && config.adminOidcSubs.includes(oidcSub)) return Role.ADMIN as "admin";
-  if (oidcSub && config.managerOidcSubs.includes(oidcSub)) {
-    return Role.CAPABILITY_MANAGER as "capability_manager";
-  }
-  return Role.CANDIDATE as "candidate";
+/** Union persisted roles with roles resolved at login. */
+export function mergeUserRoles(existing: AppRole[] | undefined, fromLogin: AppRole[]): AppRole[] {
+  return mergeRoles(existing ?? [], fromLogin);
 }

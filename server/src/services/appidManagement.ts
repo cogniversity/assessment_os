@@ -253,7 +253,7 @@ export async function listCdUsersEnriched(opts: {
         email
           ? prisma.user.findUnique({
               where: { email },
-              select: { id: true, role: true },
+              select: { id: true, roles: true },
             })
           : Promise.resolve(null),
       ]);
@@ -261,7 +261,14 @@ export async function listCdUsersEnriched(opts: {
         ...u,
         appIdRoles,
         appUserId: appUser?.id ?? null,
-        appRole: appUser?.role ?? null,
+        appRoles: appUser?.roles ?? null,
+        appRole: appUser?.roles?.length
+          ? (appUser.roles.includes("admin")
+              ? "admin"
+              : appUser.roles.includes("capability_manager")
+                ? "capability_manager"
+                : "candidate")
+          : null,
       };
     })
   );
@@ -305,6 +312,8 @@ export interface CdUser {
   appIdRoles?: string[];
   /** Linked Assessment OS user (after first login), if any */
   appUserId?: string | null;
+  appRoles?: string[] | null;
+  /** @deprecated first granted role; prefer appRoles */
   appRole?: string | null;
 }
 

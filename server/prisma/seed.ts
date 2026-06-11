@@ -496,9 +496,9 @@ async function main() {
   // ══════════════════════════════════════════════════════════════════════════
   // USERS
   // ══════════════════════════════════════════════════════════════════════════
-  const admin = await prisma.user.upsert({ where: { email: "admin@example.com" }, update: { role: "admin" }, create: { email: "admin@example.com", name: "Admin User", role: "admin" } });
-  const manager = await prisma.user.upsert({ where: { email: "manager@example.com" }, update: { role: "capability_manager" }, create: { email: "manager@example.com", name: "Priya Sharma", role: "capability_manager" } });
-  const manager2 = await prisma.user.upsert({ where: { email: "manager2@example.com" }, update: { role: "capability_manager" }, create: { email: "manager2@example.com", name: "Raj Kumar", role: "capability_manager" } });
+  const admin = await prisma.user.upsert({ where: { email: "admin@example.com" }, update: { roles: ["admin"] }, create: { email: "admin@example.com", name: "Admin User", roles: ["admin"] } });
+  const manager = await prisma.user.upsert({ where: { email: "manager@example.com" }, update: { roles: ["capability_manager"] }, create: { email: "manager@example.com", name: "Priya Sharma", roles: ["capability_manager"] } });
+  const manager2 = await prisma.user.upsert({ where: { email: "manager2@example.com" }, update: { roles: ["capability_manager"] }, create: { email: "manager2@example.com", name: "Raj Kumar", roles: ["capability_manager"] } });
   for (const u of [admin, manager, manager2]) {
     await prisma.candidateProfile.upsert({ where: { userId: u.id }, update: {}, create: { userId: u.id, employeeName: u.name, country: "IN" } });
   }
@@ -511,7 +511,7 @@ async function main() {
   ];
   const candidates = [];
   for (const c of candidateDefs) {
-    const user = await prisma.user.upsert({ where: { email: c.email }, update: {}, create: { email: c.email, name: c.name, role: "candidate" } });
+    const user = await prisma.user.upsert({ where: { email: c.email }, update: {}, create: { email: c.email, name: c.name, roles: ["candidate"] } });
     await prisma.candidateProfile.upsert({ where: { userId: user.id }, update: {}, create: { userId: user.id, employeeName: c.name, employeeId: c.emp, band: c.band, country: "IN", reportingManagerCode: "MGR001", reportingManagerName: "Priya Sharma", projectCode: c.proj, projectName: `Project ${c.proj.split("-")[1]}`, customerCode: c.customer.replace(/\s/g,"").toUpperCase(), customerName: c.customer, assignFromDate: new Date("2025-01-01"), assignToDate: new Date("2025-12-31"), allocationPercentage: 100, fte: 1.0, status: "Active" } });
     candidates.push(user);
   }

@@ -150,7 +150,7 @@ Example (partial credit, correct = B,C):
 
 | Term | Meaning | Examples |
 |------|---------|----------|
-| **Access role** (RBAC) | Who can use the app | `admin`, `capability_manager`, `candidate` — on `User.role` |
+| **Access role** (RBAC) | Who can use the app | `admin`, `capability_manager`, `candidate` — on `User.roles[]`; session `activeRole` for switching |
 | **Skill role** | Job/grade band within a skill | JS001 → "Associate Developer", "Senior Developer", "Tech Lead" |
 
 **Why "role" fits better than "level":** Roles are per-competency and match actual job families; levels like "junior/senior" are generic and do not reflect domain differences (e.g. "Cloud Engineer" vs "Solutions Architect").
@@ -273,7 +273,8 @@ count(skillId, topicId IN topicIds, skillRoleId, difficulty=hard,   published) >
 | Feature | Description | Status |
 |---------|-------------|--------|
 | **OIDC login** | IBM App ID authorization code + PKCE; callback creates/updates local `User` | **Built** |
-| **App role from IBM** | On login, read App ID roles from token claims and/or `GET .../users/{sub}/roles`; map `Admin`, `Capability_Manager`, `Candidate` to app RBAC (configurable via `APPID_ROLE_*`, with defaults) | **Built** |
+| **App role from IBM** | On login, read App ID roles from token claims and/or `GET .../users/{sub}/roles`; map all matching roles to `User.roles[]` (configurable via `APPID_ROLE_*`, with defaults) | **Built** |
+| **Role switching** | Users with multiple `User.roles` switch active context via header dropdown; `POST /api/auth/switch-role`; default active role = highest privilege (`admin` → `capability_manager` → `candidate`) | **Built** |
 | **Email fallback** | `ADMIN_EMAILS`, `CAPABILITY_MANAGER_EMAILS`, optional `ADMIN_OIDC_SUBS` when IBM roles absent | **Built** |
 | **App ID Users admin** | List/search Cloud Directory users; create; CSV bulk import; show **App ID roles** column; link to app profile after first login | **Built** |
 | **Directory export list** | When list API returns empty `Resources`, fall back to `GET cloud_directory/export` and `GET users/export` | **Built** |
@@ -290,7 +291,7 @@ The **Assign** wizard (Admin and Capability Manager — shared `AssignmentsPage`
 | **Local rows** | All `User` records with app role `candidate` or `capability_manager`, optionally filtered by `q` |
 | **IBM App ID rows** | When `APPID_IAM_APIKEY` + `APPID_TENANT_ID` are set, Cloud Directory users from `listCdUsersEnriched` (search API if `q` present; otherwise directory/profiles export — same fallbacks as App ID Users admin page) |
 | **Merge rule** | One row per normalized email; if both exist → **linked** (single checkbox) |
-| **Excluded** | Users whose linked local `User.role` is `admin`, or whose IBM App ID roles map to admin (`APPID_ROLE_ADMIN`) |
+| **Excluded** | Users whose linked local roles are admin-only, or whose IBM App ID roles map to admin (`APPID_ROLE_ADMIN`) without candidate/manager |
 
 **Search (`q`, debounced in UI ~300ms):**
 

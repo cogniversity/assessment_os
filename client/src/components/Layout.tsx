@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "./Logo";
+import { RoleSwitcher } from "./RoleSwitcher";
 import { LogOut, ChevronDown, Menu, X } from "lucide-react";
 import { useState } from "react";
 
@@ -44,9 +45,7 @@ export function Layout({ nav, children }: { nav: { to: string; label: string }[]
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex items-center gap-2 text-sm">
               <span className="text-slate-500 font-medium">{user?.name}</span>
-              <span className="bg-indigo-100 text-indigo-700 text-xs font-semibold px-2 py-0.5 rounded-full capitalize">
-                {user?.role?.replace("_", " ")}
-              </span>
+              <RoleSwitcher />
             </div>
             <button
               type="button"
@@ -119,7 +118,9 @@ export function SidebarLayout({
         {!collapsed && (
           <div className="min-w-0">
             <p className="text-xs font-semibold text-slate-800 truncate">Assessment OS</p>
-            <p className="text-xs text-slate-400 capitalize truncate">{user?.role?.replace("_", " ")}</p>
+            <div className="truncate">
+              <RoleSwitcher compact />
+            </div>
           </div>
         )}
       </div>

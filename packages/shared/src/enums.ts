@@ -5,6 +5,26 @@ export const Role = {
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
+/** Privilege order: highest first (used for default active role). */
+export const ROLE_PRIORITY = [Role.ADMIN, Role.CAPABILITY_MANAGER, Role.CANDIDATE] as const;
+
+export function highestRole(roles: readonly Role[]): Role {
+  for (const r of ROLE_PRIORITY) {
+    if (roles.includes(r)) return r;
+  }
+  return Role.CANDIDATE;
+}
+
+export const ROLE_LABELS: Record<Role, string> = {
+  admin: "Admin",
+  capability_manager: "Capability Manager",
+  candidate: "Candidate",
+};
+
+export function mergeRoles(...lists: readonly (readonly Role[])[]): Role[] {
+  return [...new Set(lists.flat())];
+}
+
 export const Difficulty = {
   EASY: "easy",
   MEDIUM: "medium",

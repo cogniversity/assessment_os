@@ -1,14 +1,15 @@
 import { Router, type Request as ExpressRequest } from "express";
 import * as client from "openid-client";
+import { z } from "zod";
 import { config, oidcConfigured } from "../config.js";
 import { prisma } from "../db.js";
-import { Role } from "@assessment-os/shared";
+import { Role, highestRole, type Role as AppRole } from "@assessment-os/shared";
 import { loginSchema } from "@assessment-os/shared";
-import crypto from "crypto";
 import { resolveOidcIdentity } from "../services/oidcIdentity.js";
-import { resolveAppRole } from "../services/roleResolver.js";
+import { mergeUserRoles, resolveAppRoles } from "../services/roleResolver.js";
 import { getUserAppIdRoles, isAppIdConfigured } from "../services/appidManagement.js";
 import { ensureProfile } from "../services/profileService.js";
+import type { User } from "@prisma/client";
 
 export const authRouter = Router();
 
@@ -26,6 +27,27 @@ async function getOidcConfig() {
   return oidcConfig;
 }
 
+function resolveActiveRole(sessionActive: AppRole | undefined, granted: AppRole[]): AppRole {
+  if (sessionActive && granted.includes(sessionActive)) return sessionActive;
+  return highestRole(granted);
+}
+
+function homePathForRole(role: AppRole): string {
+  if (role === Role.ADMIN) return "/admin";
+  if (role === Role.CAPABILITY_MANAGER) return "/manager";
+  return "/dashboard";
+}
+
+function formatAuthUser(user: User, activeRole: AppRole) {
+  const roles = user.roles as AppRole[];
+  return {
+    ...user,
+    roles,
+    activeRole,
+    role: activeRole,
+  };
+}
+
 authRouter.get("/me", async (req, res) => {
   if (!req.session.userId) {
     res.status(401).json({ error: "Not authenticated" });
@@ -39,7 +61,38 @@ authRouter.get("/me", async (req, res) => {
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
-  res.json(user);
+  const roles = user.roles as AppRole[];
+  const activeRole = resolveActiveRole(req.session.activeRole as AppRole | undefined, roles);
+  req.session.activeRole = activeRole;
+  res.json(formatAuthUser(user, activeRole));
+});
+
+authRouter.post("/switch-role", async (req, res, next) => {
+  try {
+    if (!req.session.userId) {
+      res.status(401).json({ error: "Not authenticated" });
+      return;
+    }
+    const { role } = z.object({ role: z.enum(["admin", "capability_manager", "candidate"]) }).parse(req.body);
+    const user = await prisma.user.findUnique({
+      where: { id: req.session.userId },
+      include: { profile: true },
+    });
+    if (!user) {
+      res.status(401).json({ error: "Not authenticated" });
+      return;
+    }
+    const roles = user.roles as AppRole[];
+    if (!roles.includes(role as AppRole)) {
+      res.status(403).json({ error: "Role not granted" });
+      return;
+    }
+    req.session.activeRole = role as AppRole;
+    await saveSession(req);
+    res.json(formatAuthUser(user, role as AppRole));
+  } catch (e) {
+    next(e);
+  }
 });
 
 authRouter.post("/logout", (req, res) => {
@@ -138,14 +191,17 @@ authRouter.get("/callback", async (req, res) => {
     if (appIdRoles.length === 0 && isAppIdConfigured()) {
       appIdRoles = await getUserAppIdRoles(sub);
     }
-    const role = resolveAppRole(email, sub, appIdRoles);
+    const fromLogin = resolveAppRoles(email, sub, appIdRoles);
     console.info(
-      `OIDC login: sub=${sub} email=${email} appIdRoles=[${appIdRoles.join(", ")}] role=${role}`
+      `OIDC login: sub=${sub} email=${email} appIdRoles=[${appIdRoles.join(", ")}] roles=[${fromLogin.join(", ")}]`
     );
     // Link by OIDC subject, or by email (e.g. user provisioned in admin before first IBM login)
     let user =
       (sub ? await prisma.user.findFirst({ where: { oidcSub: sub } }) : null) ??
       (await prisma.user.findUnique({ where: { email } }));
+
+    const roles = mergeUserRoles(user?.roles as AppRole[] | undefined, fromLogin);
+    const activeRole = highestRole(roles);
 
     if (!user) {
       user = await prisma.user.create({
@@ -153,7 +209,7 @@ authRouter.get("/callback", async (req, res) => {
           email,
           name,
           oidcSub: sub || null,
-          role,
+          roles,
         },
       });
     } else {
@@ -162,7 +218,7 @@ authRouter.get("/callback", async (req, res) => {
         where: { id: user.id },
         data: {
           name,
-          role,
+          roles,
           ...(sub ? { oidcSub: sub } : {}),
           ...(updateEmail && email.includes("@") ? { email } : {}),
         },
@@ -170,18 +226,13 @@ authRouter.get("/callback", async (req, res) => {
     }
     await ensureProfile(user.id);
     req.session.userId = user.id;
+    req.session.activeRole = activeRole;
     delete req.session.oidcState;
     delete req.session.oidcNonce;
     delete req.session.oidcCodeVerifier;
     await saveSession(req);
 
-    const redirect =
-      user.role === "admin"
-        ? "/admin"
-        : user.role === "capability_manager"
-          ? "/manager"
-          : "/dashboard";
-    res.redirect(`${config.clientBaseUrl}${redirect}`);
+    res.redirect(`${config.clientBaseUrl}${homePathForRole(activeRole)}`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("OIDC callback failed:", e);
@@ -205,23 +256,26 @@ authRouter.post("/dev-login", async (req, res) => {
   }
   const { email, name } = parsed.data;
   let user = await prisma.user.findUnique({ where: { email } });
-  const role = resolveAppRole(email.toLowerCase(), undefined, []);
+  const fromLogin = resolveAppRoles(email.toLowerCase(), undefined, []);
+  const roles = mergeUserRoles(user?.roles as AppRole[] | undefined, fromLogin);
+  const activeRole = highestRole(roles);
   if (!user) {
     user = await prisma.user.create({
       data: {
         email,
         name: name || email.split("@")[0],
-        role,
+        roles,
       },
     });
     await prisma.candidateProfile.create({ data: { userId: user.id } });
   } else {
     user = await prisma.user.update({
       where: { id: user.id },
-      data: { name: name || email.split("@")[0], role },
+      data: { name: name || email.split("@")[0], roles },
     });
   }
   req.session.userId = user.id;
+  req.session.activeRole = activeRole;
   await saveSession(req);
-  res.json(user);
+  res.json(formatAuthUser(user, activeRole));
 });

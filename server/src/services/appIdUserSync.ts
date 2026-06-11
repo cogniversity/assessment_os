@@ -6,12 +6,13 @@ import {
   type CdUser,
 } from "./appidManagement.js";
 import { ensureProfile } from "./profileService.js";
-import { resolveAppRole } from "./roleResolver.js";
+import { mergeUserRoles, resolveAppRoles } from "./roleResolver.js";
+import type { Role as AppRole } from "@assessment-os/shared";
 
 export type AppIdSyncResult = {
   email: string;
   userId: string;
-  role: string;
+  roles: AppRole[];
   created: boolean;
 };
 
@@ -37,16 +38,17 @@ export async function syncCdUserToLocal(u: CdUser): Promise<AppIdSyncResult> {
     resolveAppIdSubjectByEmail(email),
   ]);
 
-  const role = resolveAppRole(email, oidcSub ?? undefined, appIdRoles);
+  const fromLogin = resolveAppRoles(email, oidcSub ?? undefined, appIdRoles);
   const name = u.displayName?.trim() || u.userName?.trim() || email.split("@")[0];
 
   const existing = await prisma.user.findUnique({ where: { email } });
+  const roles = mergeUserRoles(existing?.roles as AppRole[] | undefined, fromLogin);
   const user = existing
     ? await prisma.user.update({
         where: { id: existing.id },
         data: {
           name,
-          role,
+          roles,
           ...(oidcSub ? { oidcSub } : {}),
         },
       })
@@ -54,7 +56,7 @@ export async function syncCdUserToLocal(u: CdUser): Promise<AppIdSyncResult> {
         data: {
           email,
           name,
-          role,
+          roles,
           oidcSub: oidcSub ?? null,
         },
       });
@@ -64,7 +66,7 @@ export async function syncCdUserToLocal(u: CdUser): Promise<AppIdSyncResult> {
   return {
     email,
     userId: user.id,
-    role: user.role,
+    roles: user.roles as AppRole[],
     created: !existing,
   };
 }

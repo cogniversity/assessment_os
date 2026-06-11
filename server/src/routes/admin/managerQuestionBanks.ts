@@ -33,7 +33,7 @@ managerQuestionBanksRouter.post("/", async (req, res, next) => {
       return;
     }
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.role !== "capability_manager") {
+    if (!user || !user.roles.includes("capability_manager")) {
       res.status(400).json({ error: "userId must be a capability manager" });
       return;
     }

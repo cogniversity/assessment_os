@@ -1,13 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
+import type { Role } from "@assessment-os/shared";
 
 export interface AppIdSyncSummary {
-  synced: { email: string; userId: string; role: string; created: boolean }[];
+  synced: { email: string; userId: string; roles: Role[]; created: boolean }[];
   skipped: { email: string; reason: string }[];
 }
 
 export function formatAppIdSyncMessage(summary: AppIdSyncSummary): string {
-  const managers = summary.synced.filter((s) => s.role === "capability_manager").length;
+  const managers = summary.synced.filter((s) => s.roles.includes("capability_manager")).length;
   return `Synced ${summary.synced.length} user(s)${managers ? ` (${managers} capability manager${managers !== 1 ? "s" : ""})` : ""}${summary.skipped.length ? `; ${summary.skipped.length} skipped` : ""}.`;
 }
 
