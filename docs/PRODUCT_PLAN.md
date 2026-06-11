@@ -448,7 +448,7 @@ flowchart LR
 - Proctoring tab renders `AttemptProctoringPanel` showing summary cards, photo gallery (start / periodic badges), and a unified chronological timeline of events and photos.
 
 **Out of scope:** video recording, auto-submit on violation, DevTools detection.
-- **Certificates:** Issued when attempt.score ≥ assessment.passMark AND assessment.issueCertificate is true; UUID + authenticated verify URL; PDF; optional expiry from `certValidityDays`
+- **Certificates:** Issued when attempt.score ≥ assessment.passMark AND assessment.issueCertificate is true; PDF footer links to `{CLIENT_URL}/verify/{certNumber}` (auth-gated SPA page); optional expiry from `certValidityDays`
 - **Profiles:** Country, employee/project/customer fields, allocation → FTE; admin custom fields; external certs; audit on profile/proficiency changes. Admins and capability managers edit via `GET/PATCH /api/profile/:userId`; assessments on profile use `AssessmentTopic[]` (not legacy single `topic`).
 
 ---

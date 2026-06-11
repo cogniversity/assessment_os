@@ -77,7 +77,7 @@ Admins define **reusable assessment blueprints** (skill + topics + difficulty mi
 ### Certificates & results
 
 - **PDF certificates** — Issued when score meets pass mark; optional proficiency band and expiry
-- **Verification** — Auth-gated certificate verify endpoint with UUID
+- **Verification** — Auth-gated `/verify/:certNumber` page; PDF footer links use `CLIENT_URL` (not the API port)
 - **Results export** — CSV (one row per attempt) and PDF attempt reports; separate **concept breakdown CSV** (one row per attempt × concept)
 - **Analytics** — Pass rates by topic, skill role, and blueprint; blueprint summary; concept trends aggregated from capability reports
 - **Reattempt requests** — Managers can request retakes; admins approve
@@ -277,6 +277,8 @@ The API key needs **Manager** access on the App ID instance (IBM Cloud → IAM �
 |----------|---------|
 | `DATABASE_URL` | PostgreSQL connection string |
 | `SESSION_SECRET` | Session signing (required in production) |
+| `CLIENT_URL` | Public browser origin for user-facing links (OIDC redirects, certificate verify URLs on PDFs). Dev: `http://localhost:5173` |
+| `SERVER_URL` | API origin for internal/server use — not used for links printed on PDFs. Dev: `http://localhost:3001` |
 | `CONTEXT_ROOT` | Optional nginx subpath segment (e.g. `growth` → `/growth/`) |
 | `OIDC_*` | IBM App ID / OIDC provider |
 | `ADMIN_EMAILS`, `CAPABILITY_MANAGER_EMAILS` | RBAC email allowlists |

@@ -4,7 +4,7 @@ import fs from "fs";
 import { PROFICIENCY_LEVELS } from "@assessment-os/shared";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../db.js";
-import { config } from "../config.js";
+import { certificateVerifyUrl, config } from "../config.js";
 
 export const certificatesRouter = Router();
 certificatesRouter.use(requireAuth);
@@ -51,7 +51,8 @@ function formatDate(d: Date): string {
 
 const DEFAULT_THRESHOLDS = [40, 55, 70, 85, 95];
 
-const METER_SEGMENT_COLORS = ["#E2E8F0", "#CBD5E1", "#94A3B8", "#64748B", "#475569", "#1E3A5F"];
+// Light-grey → warm-gold → deep-navy: a gradient that reads instantly as "novice → expert"
+const METER_SEGMENT_COLORS = ["#E2E8F0", "#FDE68A", "#F59E0B", "#C9A84C", "#2D5078", "#1E3A5F"];
 
 const METER_SHORT_LABELS: Record<string, string> = {
   entry: "Entry",
@@ -67,7 +68,17 @@ function normalizeThresholds(raw: unknown): number[] {
   return raw.slice(0, 5).map((v) => Number(v));
 }
 
-/** Horizontal proficiency scale: band widths from thresholds, tick marks, candidate score marker. */
+/**
+ * Horizontal proficiency scale.
+ *
+ * Layout (top → bottom):
+ *   "Proficiency scale" label  (8pt, y = y)
+ *   Score pill + stem          (24 px indicator area)
+ *   Coloured bar               (barH = 26 px)
+ *   Tick + level label row     (18 px)
+ *
+ * Returns the y co-ordinate immediately below the last label row.
+ */
 function drawProficiencyMeter(
   doc: InstanceType<typeof PDFDocument>,
   opts: {
@@ -81,49 +92,92 @@ function drawProficiencyMeter(
   }
 ) {
   const { x, y, width, proficiency, score, thresholds, colors } = opts;
-  const barH = 18;
+  const barH = 26;
+  const INDICATOR_H = 24; // space above bar reserved for score pill
   const bounds = [0, ...thresholds, 100];
   const levelIndex = PROFICIENCY_LEVELS.indexOf(proficiency as (typeof PROFICIENCY_LEVELS)[number]);
 
+  // "Proficiency scale" title
   doc.fillColor(colors.silver).fontSize(8).font("Helvetica")
     .text("Proficiency scale", x, y, { width, align: "center" });
 
-  const barY = y + 14;
+  const barY = y + 14 + INDICATOR_H;
+
+  // Segments
   for (let i = 0; i < 6; i++) {
-    const startPct = bounds[i] / 100;
-    const endPct = bounds[i + 1] / 100;
-    const segX = x + startPct * width;
-    const segW = Math.max(1, (endPct - startPct) * width);
-    doc.rect(segX, barY, segW, barH).fillColor(METER_SEGMENT_COLORS[i] ?? colors.navy).fill();
-    if (i === levelIndex) {
-      doc.rect(segX, barY, segW, barH).lineWidth(1.5).strokeColor(colors.gold).stroke();
+    const segX = x + (bounds[i] / 100) * width;
+    const segW = Math.max(2, ((bounds[i + 1] - bounds[i]) / 100) * width);
+    doc.rect(segX, barY, segW, barH)
+      .fillColor(METER_SEGMENT_COLORS[i] ?? colors.navy)
+      .fill();
+
+    // White divider between segments (skip before first)
+    if (i > 0) {
+      doc.moveTo(segX, barY).lineTo(segX, barY + barH)
+        .lineWidth(0.6).strokeColor("#FFFFFF").stroke();
     }
+
+    // Gold stroke on the active level
+    if (i === levelIndex) {
+      doc.rect(segX + 0.5, barY + 0.5, segW - 1, barH - 1)
+        .lineWidth(2).strokeColor(colors.gold).stroke();
+    }
+  }
+
+  // Thin silver border around whole bar
+  doc.rect(x, barY, width, barH)
+    .lineWidth(0.5).strokeColor(colors.silver).stroke();
+
+  // Level labels BELOW bar (centred on each segment)
+  const labelY = barY + barH + 10;
+  for (let i = 0; i < 6; i++) {
+    const segX = x + (bounds[i] / 100) * width;
+    const segW = ((bounds[i + 1] - bounds[i]) / 100) * width;
     const label = METER_SHORT_LABELS[PROFICIENCY_LEVELS[i]] ?? PROFICIENCY_LEVELS[i];
-    doc.fillColor(i >= 3 ? "#FFFFFF" : colors.navy).fontSize(6.5).font("Helvetica-Bold")
-      .text(label, segX, barY + 5, { width: segW, align: "center" });
+    const isActive = i === levelIndex;
+
+    // Tick mark
+    doc.moveTo(segX + segW / 2, barY + barH)
+      .lineTo(segX + segW / 2, barY + barH + 4)
+      .lineWidth(0.4).strokeColor(colors.silver).stroke();
+
+    doc
+      .fillColor(isActive ? colors.navy : colors.silver)
+      .fontSize(isActive ? 7.5 : 7)
+      .font(isActive ? "Helvetica-Bold" : "Helvetica")
+      .text(label, segX, labelY, { width: segW, align: "center" });
   }
 
-  for (const t of thresholds) {
-    const tx = x + (t / 100) * width;
-    doc.moveTo(tx, barY).lineTo(tx, barY + barH + 3).lineWidth(0.5).strokeColor(colors.silver).stroke();
-    doc.fillColor(colors.silver).fontSize(6).font("Helvetica")
-      .text(`${t}%`, tx - 12, barY + barH + 5, { width: 24, align: "center" });
-  }
-
+  // Score pill + vertical stem above the bar
   if (score != null) {
     const clamped = Math.min(100, Math.max(0, score));
     const mx = x + (clamped / 100) * width;
-    doc.moveTo(mx, barY - 2)
-      .lineTo(mx - 5, barY - 10)
-      .lineTo(mx + 5, barY - 10)
-      .closePath()
-      .fillColor(colors.gold)
-      .fill();
-    doc.fillColor(colors.navy).fontSize(7).font("Helvetica-Bold")
-      .text(`${clamped}%`, mx - 14, barY - 22, { width: 28, align: "center" });
+
+    const pillW = 36, pillH = 15, pillR = 3;
+    const pillX = Math.min(Math.max(x, mx - pillW / 2), x + width - pillW);
+    const pillTop = barY - INDICATOR_H + 1;
+
+    // Stem from pill bottom → bar top
+    doc.moveTo(mx, pillTop + pillH)
+      .lineTo(mx, barY)
+      .lineWidth(1.5).strokeColor(colors.gold).stroke();
+
+    // Small arrowhead at bar surface
+    doc.moveTo(mx - 4, barY)
+      .lineTo(mx + 4, barY)
+      .lineTo(mx, barY + 5)
+      .closePath().fillColor(colors.gold).fill();
+
+    // Pill background
+    doc.roundedRect(pillX, pillTop, pillW, pillH, pillR)
+      .fillColor(colors.gold).fill();
+
+    // Pill score text
+    doc.fillColor(colors.navy).fontSize(8).font("Helvetica-Bold")
+      .text(`${clamped}%`, pillX, pillTop + 3, { width: pillW, align: "center" });
   }
 
-  return barY + barH + 18;
+  return labelY + 12;
 }
 
 function buildCertificatePdf(
@@ -237,7 +291,8 @@ function buildCertificatePdf(
   const bodyHeight = bodyBottom - bodyTop;
 
   const showProf = opts.showProficiency && !!opts.proficiency;
-  const profBlockH = showProf ? 26 + 12 + 52 : 0;
+  // meter now needs ~92 px (14 title + 24 indicator + 26 bar + 18 labels + 10 buffer)
+  const profBlockH = showProf ? 26 + 12 + 92 : 0;
   const blockH = 12 + 14 + 38 + 8 + 2 + 8 + 12 + 10 + 18 + 12 + profBlockH + 18 + 12;
   let cy = bodyTop + (bodyHeight - blockH) / 2;
 
@@ -408,7 +463,7 @@ certificatesRouter.get("/:certNumber/pdf", async (req, res) => {
     score: cert.attempt.score,
     proficiencyThresholds: normalizeThresholds(assessment.proficiencyThresholds),
     showProficiency: assessment.showProficiencyOnCert,
-    verifyUrl: `${config.serverBaseUrl}/api/certificates/${cert.certNumber}`,
+    verifyUrl: certificateVerifyUrl(cert.certNumber),
     orgName: config.orgName,
     logoPath: config.logoPath,
   });

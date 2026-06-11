@@ -115,3 +115,8 @@ export const oidcConfigured =
   isValidOidcIssuer(config.oidc.issuer) &&
   !!config.oidc.clientId &&
   !!config.oidc.clientSecret;
+
+/** Human-facing app link for certificate PDF footers (uses CLIENT_URL + CONTEXT_ROOT). */
+export function certificateVerifyUrl(certNumber: string): string {
+  return `${config.clientBaseUrl}/verify/${certNumber}`;
+}
