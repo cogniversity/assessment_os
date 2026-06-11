@@ -113,6 +113,17 @@ export const questionBulkSkillRolesSchema = z.object({
   mode: z.enum(["replace", "add"]).default("replace"),
 });
 
+export const questionBulkConceptsSchema = z.object({
+  questionIds: z.array(z.string().uuid()).min(1),
+  conceptIds: z.array(z.string().uuid()),
+  /** replace = set concepts exactly (empty clears); add = merge with existing */
+  mode: z.enum(["replace", "add"]).default("replace"),
+});
+
+export const questionBulkDeleteSchema = z.object({
+  questionIds: z.array(z.string().uuid()).min(1),
+});
+
 // Assessment outcome fields shared by blueprint and assignment schemas
 const assessmentOutcomeFields = {
   passMark:               z.number().int().min(0).max(100).default(60),

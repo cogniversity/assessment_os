@@ -69,7 +69,9 @@ export default function QuestionsPage() {
   const [missingConceptsOnly, setMissingConceptsOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkRoleIds, setBulkRoleIds] = useState<string[]>([]);
+  const [bulkConceptIds, setBulkConceptIds] = useState<string[]>([]);
   const [showBulkRoles, setShowBulkRoles] = useState(false);
+  const [showBulkConcepts, setShowBulkConcepts] = useState(false);
   const [form, setForm] = useState({
     topicId: "",
     skillId: "",
@@ -285,6 +287,28 @@ export default function QuestionsPage() {
     },
   });
 
+  const bulkAssignConcepts = useMutation({
+    mutationFn: (body: { questionIds: string[]; conceptIds: string[]; mode: "replace" | "add" }) =>
+      api<{ updated: number }>("/admin/questions/bulk/concepts", { method: "POST", json: body }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["questions"] });
+      setSelectedIds([]);
+      setBulkConceptIds([]);
+      setShowBulkConcepts(false);
+      showToast(`Updated concepts on ${data.updated} question${data.updated !== 1 ? "s" : ""}`);
+    },
+  });
+
+  const bulkDelete = useMutation({
+    mutationFn: (questionIds: string[]) =>
+      api<{ deleted: number }>("/admin/questions/bulk/delete", { method: "POST", json: { questionIds } }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["questions"] });
+      setSelectedIds([]);
+      showToast(`Deleted ${data.deleted} question${data.deleted !== 1 ? "s" : ""}`);
+    },
+  });
+
   const publishVisibleDrafts = () => {
     if (visibleDraftIds.length === 0) return;
     bulkPublish.mutate(visibleDraftIds);
@@ -318,6 +342,38 @@ export default function QuestionsPage() {
     bulkAssignRoles.mutate({ questionIds: ids, skillRoleIds: bulkRoleIds, mode: "replace" });
   };
 
+  const assignConceptsToSelected = (mode: "replace" | "add") => {
+    if (selectedIds.length === 0) return;
+    if (mode === "add" && bulkConceptIds.length === 0) return;
+    if (selectedSkillIds.size > 1) {
+      showToast("Select questions from one skill only, or filter by skill first");
+      return;
+    }
+    bulkAssignConcepts.mutate({ questionIds: selectedIds, conceptIds: bulkConceptIds, mode });
+  };
+
+  const assignConceptsToVisibleMissing = () => {
+    const ids = visibleQuestions.filter((q) => questionConcepts(q).length === 0).map((q) => q.id);
+    if (ids.length === 0) return;
+    if (!filters.skillId) {
+      showToast("Filter by skill first so concepts apply to one skill");
+      return;
+    }
+    bulkAssignConcepts.mutate({ questionIds: ids, conceptIds: bulkConceptIds, mode: "replace" });
+  };
+
+  const deleteSelected = () => {
+    if (selectedIds.length === 0) return;
+    if (
+      !confirm(
+        `Delete ${selectedIds.length} selected question${selectedIds.length !== 1 ? "s" : ""}? This cannot be undone. Attempt answers for these questions will be removed.`
+      )
+    ) {
+      return;
+    }
+    bulkDelete.mutate(selectedIds);
+  };
+
   const visibleQuestions = useMemo(() => {
     let rows = questions.data ?? [];
     if (missingRolesOnly) rows = rows.filter((q) => q.skillRoles.length === 0);
@@ -340,6 +396,12 @@ export default function QuestionsPage() {
     queryKey: ["skill-roles", bulkSkillId],
     queryFn: () => api<SkillRole[]>(`/admin/skills/${bulkSkillId}/roles`),
     enabled: !!bulkSkillId && showBulkRoles,
+  });
+
+  const bulkSkillConcepts = useQuery({
+    queryKey: ["skill-concepts", bulkSkillId],
+    queryFn: () => api<Concept[]>(`/admin/skills/${bulkSkillId}/concepts`),
+    enabled: !!bulkSkillId && showBulkConcepts,
   });
 
   const visibleDraftIds = visibleQuestions.filter((q) => q.status === "draft").map((q) => q.id);
@@ -395,7 +457,7 @@ export default function QuestionsPage() {
       {missingConceptsCount > 0 && (
         <div className="bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-sm text-teal-900">
           <strong>{missingConceptsCount} question{missingConceptsCount !== 1 ? "s" : ""} missing concepts.</strong>{" "}
-          Use <strong>Assign concepts</strong> or the pencil icon per row. Add concepts on{" "}
+          Use bulk <strong>Assign concepts</strong>, per-row assign, or the pencil icon. Add concepts on{" "}
           <Link to="/admin/skills" className="underline font-medium">Skills</Link> if none exist for that skill.
         </div>
       )}
@@ -440,6 +502,22 @@ export default function QuestionsPage() {
             }}
           >
             {showBulkRoles ? "Hide role picker" : "Assign skill roles in bulk"}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowBulkConcepts((v) => !v);
+              if (!showBulkConcepts) setBulkConceptIds([]);
+            }}
+          >
+            {showBulkConcepts ? "Hide concept picker" : "Assign concepts in bulk"}
+          </Button>
+          <Button
+            variant="danger"
+            disabled={bulkDelete.isPending || selectedIds.length === 0}
+            onClick={deleteSelected}
+          >
+            Delete selected ({selectedIds.length})
           </Button>
         </div>
         {showBulkRoles && (
@@ -519,6 +597,85 @@ export default function QuestionsPage() {
               <p className="text-xs text-red-600">{(bulkAssignRoles.error as Error).message}</p>
             )}
           </div>
+        )}
+        {showBulkConcepts && (
+          <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-3 mt-3">
+            {!bulkSkillId && (
+              <p className="text-xs text-amber-800">
+                Filter by <strong>skill</strong> or select questions from a single skill to pick concepts.
+              </p>
+            )}
+            {bulkSkillId && bulkSkillConcepts.isLoading && (
+              <p className="text-xs text-slate-500">Loading concepts…</p>
+            )}
+            {bulkSkillId && !bulkSkillConcepts.isLoading && (bulkSkillConcepts.data?.length ?? 0) === 0 && (
+              <p className="text-xs text-teal-800">
+                No concepts for this skill — add them on <Link to="/admin/skills" className="underline">Skills</Link>.
+              </p>
+            )}
+            {bulkSkillId && (bulkSkillConcepts.data?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {bulkSkillConcepts.data!.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={bulkConceptIds.includes(c.id)}
+                      onChange={(e) =>
+                        setBulkConceptIds((prev) =>
+                          e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)
+                        )
+                      }
+                      className="rounded border-slate-300 accent-teal-600"
+                    />
+                    <span className="font-mono text-xs text-teal-700">{c.code}</span>
+                    <span className="text-slate-700">{c.name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={
+                  bulkAssignConcepts.isPending ||
+                  selectedIds.length === 0 ||
+                  selectedSkillIds.size > 1
+                }
+                onClick={() => assignConceptsToSelected("replace")}
+              >
+                Set concepts on selected ({selectedIds.length})
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={
+                  bulkAssignConcepts.isPending ||
+                  selectedIds.length === 0 ||
+                  bulkConceptIds.length === 0 ||
+                  selectedSkillIds.size > 1
+                }
+                onClick={() => assignConceptsToSelected("add")}
+              >
+                Add concepts to selected
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={
+                  bulkAssignConcepts.isPending ||
+                  !filters.skillId ||
+                  visibleQuestions.filter((q) => questionConcepts(q).length === 0).length === 0
+                }
+                onClick={assignConceptsToVisibleMissing}
+              >
+                Set concepts on all visible missing concepts (
+                {visibleQuestions.filter((q) => questionConcepts(q).length === 0).length})
+              </Button>
+            </div>
+            {bulkAssignConcepts.isError && (
+              <p className="text-xs text-red-600">{(bulkAssignConcepts.error as Error).message}</p>
+            )}
+          </div>
+        )}
+        {bulkDelete.isError && (
+          <p className="text-xs text-red-600 mt-2">{(bulkDelete.error as Error).message}</p>
         )}
       </Card>
 

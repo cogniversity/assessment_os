@@ -4,6 +4,8 @@ import {
   questionUpdateSchema,
   questionBulkPublishSchema,
   questionBulkSkillRolesSchema,
+  questionBulkConceptsSchema,
+  questionBulkDeleteSchema,
   Role,
 } from "@assessment-os/shared";
 import { prisma } from "../../db.js";
@@ -195,6 +197,103 @@ questionsRouter.post("/bulk/skill-roles", async (req, res, next) => {
     });
 
     res.json({ updated, mode, skillRoleIds });
+  } catch (e) {
+    next(e);
+  }
+});
+
+questionsRouter.post("/bulk/concepts", async (req, res, next) => {
+  try {
+    const user = getUser(req);
+    const { questionIds, conceptIds, mode } = questionBulkConceptsSchema.parse(req.body);
+    if (mode === "add" && conceptIds.length === 0) {
+      res.status(400).json({ error: "conceptIds required for add mode" });
+      return;
+    }
+    const rows = await prisma.question.findMany({
+      where: { id: { in: questionIds } },
+      include: { concepts: { select: { conceptId: true } } },
+    });
+    if (rows.length !== questionIds.length) {
+      res.status(400).json({ error: "One or more questionIds not found" });
+      return;
+    }
+
+    const skillIds = new Set(rows.map((r) => r.skillId));
+    if (skillIds.size !== 1) {
+      res.status(400).json({ error: "All questions in a bulk concept update must belong to the same skill" });
+      return;
+    }
+    const skillId = rows[0]!.skillId;
+
+    for (const row of rows) {
+      if (!(await assertQuestionAccess(user.id, user.role, row.skillId, row.topicId))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
+
+    try {
+      await assertConceptIdsForSkill(skillId, conceptIds);
+    } catch {
+      res.status(400).json({ error: "One or more conceptIds do not belong to the questions' skill" });
+      return;
+    }
+
+    let updated = 0;
+    await prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        const targetConceptIds =
+          mode === "add"
+            ? [...new Set([...row.concepts.map((c) => c.conceptId), ...conceptIds])]
+            : conceptIds;
+        await tx.questionConcept.deleteMany({ where: { questionId: row.id } });
+        if (targetConceptIds.length > 0) {
+          await tx.questionConcept.createMany({
+            data: targetConceptIds.map((conceptId) => ({ questionId: row.id, conceptId })),
+          });
+        }
+        updated++;
+      }
+    });
+
+    res.json({ updated, mode, conceptIds });
+  } catch (e) {
+    next(e);
+  }
+});
+
+questionsRouter.post("/bulk/delete", async (req, res, next) => {
+  try {
+    const user = getUser(req);
+    const { questionIds } = questionBulkDeleteSchema.parse(req.body);
+    const rows = await prisma.question.findMany({
+      where: { id: { in: questionIds } },
+      select: { id: true, skillId: true, topicId: true },
+    });
+    if (rows.length !== questionIds.length) {
+      res.status(400).json({ error: "One or more questionIds not found" });
+      return;
+    }
+
+    for (const row of rows) {
+      if (!(await assertQuestionAccess(user.id, user.role, row.skillId, row.topicId))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+    }
+
+    let deleted = 0;
+    await prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        await tx.questionSkillRole.deleteMany({ where: { questionId: row.id } });
+        await tx.attemptAnswer.deleteMany({ where: { questionId: row.id } });
+        await tx.question.delete({ where: { id: row.id } });
+        deleted++;
+      }
+    });
+
+    res.json({ deleted });
   } catch (e) {
     next(e);
   }
