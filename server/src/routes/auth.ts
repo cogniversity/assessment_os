@@ -3,7 +3,7 @@ import * as client from "openid-client";
 import { z } from "zod";
 import { config, oidcConfigured } from "../config.js";
 import { prisma } from "../db.js";
-import { Role, highestRole, type Role as AppRole } from "@assessment-os/shared";
+import { Role, highestRole, normalizeGrantedRoles, type Role as AppRole } from "@assessment-os/shared";
 import { loginSchema } from "@assessment-os/shared";
 import { resolveOidcIdentity } from "../services/oidcIdentity.js";
 import { mergeUserRoles, resolveAppRoles } from "../services/roleResolver.js";
@@ -39,12 +39,14 @@ function homePathForRole(role: AppRole): string {
 }
 
 function formatAuthUser(user: User, activeRole: AppRole) {
-  const roles = user.roles as AppRole[];
+  const roles = normalizeGrantedRoles(user.roles);
+  const effectiveActive = roles.includes(activeRole) ? activeRole : highestRole(roles);
   return {
     ...user,
     roles,
-    activeRole,
-    role: activeRole,
+    grantedRoles: roles,
+    activeRole: effectiveActive,
+    role: effectiveActive,
   };
 }
 
@@ -61,7 +63,7 @@ authRouter.get("/me", async (req, res) => {
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
-  const roles = user.roles as AppRole[];
+  const roles = normalizeGrantedRoles(user.roles);
   const activeRole = resolveActiveRole(req.session.activeRole as AppRole | undefined, roles);
   req.session.activeRole = activeRole;
   res.json(formatAuthUser(user, activeRole));
@@ -82,7 +84,7 @@ authRouter.post("/switch-role", async (req, res, next) => {
       res.status(401).json({ error: "Not authenticated" });
       return;
     }
-    const roles = user.roles as AppRole[];
+    const roles = normalizeGrantedRoles(user.roles);
     if (!roles.includes(role as AppRole)) {
       res.status(403).json({ error: "Role not granted" });
       return;

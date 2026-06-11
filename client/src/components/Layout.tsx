@@ -118,7 +118,7 @@ export function SidebarLayout({
         {!collapsed && (
           <div className="min-w-0">
             <p className="text-xs font-semibold text-slate-800 truncate">Assessment OS</p>
-            <div className="truncate">
+            <div className="relative">
               <RoleSwitcher compact />
             </div>
           </div>

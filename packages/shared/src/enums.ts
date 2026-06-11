@@ -25,6 +25,29 @@ export function mergeRoles(...lists: readonly (readonly Role[])[]): Role[] {
   return [...new Set(lists.flat())];
 }
 
+const VALID_ROLES: readonly Role[] = ROLE_PRIORITY;
+
+/** Coerce API/DB role values into a deduped list in privilege order. */
+export function normalizeGrantedRoles(roles: unknown): Role[] {
+  if (!roles) return [];
+  let values: string[] = [];
+  if (Array.isArray(roles)) {
+    values = roles.map(String);
+  } else if (typeof roles === "string") {
+    values = roles
+      .replace(/^\{|\}$/g, "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  const granted = new Set<Role>();
+  for (const raw of values) {
+    const r = raw.trim() as Role;
+    if (VALID_ROLES.includes(r)) granted.add(r);
+  }
+  return VALID_ROLES.filter((r) => granted.has(r));
+}
+
 export const Difficulty = {
   EASY: "easy",
   MEDIUM: "medium",
