@@ -13,6 +13,7 @@ const COL_MAP: Record<string, string> = {
   skillcode:      "skillCode",
   topicname:      "topicName",
   skillrolecodes: "skillRoleCodes", // comma-separated, e.g. "ASSOC,SR_DEV"
+  conceptcodes:   "conceptCodes", // optional comma-separated, e.g. "CLOSURES,HOISTING"
   difficulty:     "difficulty",
   questionstem:   "questionStem",
   optiona:        "optionA",
@@ -67,11 +68,18 @@ questionImportRouter.post("/commit", upload.single("file"), async (req, res) => 
   const { valid } = await validateRows(rows);
   let imported = 0;
   for (const row of valid) {
-    const { skillRoleIds, ...data } = row.data as { skillRoleIds: string[]; [k: string]: unknown };
+    const { skillRoleIds, conceptIds, ...data } = row.data as {
+      skillRoleIds: string[];
+      conceptIds?: string[];
+      [k: string]: unknown;
+    };
     await prisma.question.create({
       data: {
         ...(data as never),
         skillRoles: { create: skillRoleIds.map((skillRoleId) => ({ skillRoleId })) },
+        ...(conceptIds?.length
+          ? { concepts: { create: conceptIds.map((conceptId) => ({ conceptId })) } }
+          : {}),
       },
     });
     imported++;
@@ -97,12 +105,14 @@ async function validateRows(rows: Record<string, string>[]) {
   });
   const skills = await prisma.skill.findMany();
   const topics = await prisma.topic.findMany();
-  const roles  = await prisma.skillRole.findMany();
+  const roles    = await prisma.skillRole.findMany();
+  const concepts = await prisma.concept.findMany({ where: { isActive: true } });
 
   const skillByCode = new Map(skills.map((s) => [s.code.toLowerCase(), s]));
   const topicByName = new Map(topics.map((t) => [t.name.toLowerCase(), t]));
   // key: `${skillId}::${CODE}`
-  const roleByKey   = new Map(roles.map((r) => [`${r.skillId}::${r.code.toUpperCase()}`, r]));
+  const roleByKey    = new Map(roles.map((r) => [`${r.skillId}::${r.code.toUpperCase()}`, r]));
+  const conceptByKey = new Map(concepts.map((c) => [`${c.skillId}::${c.code.toUpperCase()}`, c]));
 
   const valid: { row: number; data: object }[] = [];
   const errors: { row: number; reason: string }[] = [];
@@ -125,6 +135,20 @@ async function validateRows(rows: Record<string, string>[]) {
     const missing = rawCodes.filter((_, idx) => !resolvedRoles[idx]);
     if (missing.length) {
       errors.push({ row: rowNum, reason: `Unknown skillRoleCode(s) for ${skill.code}: ${missing.join(", ")}` });
+      return;
+    }
+
+    const rawConceptCodes = (row.conceptCodes || "")
+      .split(",")
+      .map((c) => c.trim().toUpperCase())
+      .filter(Boolean);
+    const resolvedConcepts = rawConceptCodes.map((code) => conceptByKey.get(`${skill.id}::${code}`));
+    const missingConcepts = rawConceptCodes.filter((_, idx) => !resolvedConcepts[idx]);
+    if (missingConcepts.length) {
+      errors.push({
+        row: rowNum,
+        reason: `Unknown conceptCode(s) for ${skill.code}: ${missingConcepts.join(", ")}`,
+      });
       return;
     }
 
@@ -162,6 +186,7 @@ async function validateRows(rows: Record<string, string>[]) {
         skillId:    skill.id,
         topicId:    topic.id,
         skillRoleIds: resolvedRoles.map((r) => r!.id),
+        conceptIds: resolvedConcepts.map((c) => c!.id),
         difficulty: row.difficulty.toLowerCase(),
         stem:       row.questionStem,
         options,
@@ -178,12 +203,18 @@ async function validateRows(rows: Record<string, string>[]) {
 
 questionImportRouter.get("/template.xlsx", async (_req, res) => {
   const skills = await prisma.skill.findMany({
-    include: { roles: { where: { isActive: true }, orderBy: { sortOrder: "asc" } } },
+    include: {
+      roles: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
+      concepts: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
+    },
   });
-  const refRows = skills.flatMap((s) =>
+  const roleRefRows = skills.flatMap((s) =>
     s.roles.map((r) => ({ skillCode: s.code, skillName: s.name, roleCode: r.code, roleName: r.name }))
   );
-  const buf = await buildQuestionImportTemplateBuffer(refRows);
+  const conceptRefRows = skills.flatMap((s) =>
+    s.concepts.map((c) => ({ skillCode: s.code, conceptCode: c.code, conceptName: c.name }))
+  );
+  const buf = await buildQuestionImportTemplateBuffer(roleRefRows, conceptRefRows);
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", "attachment; filename=question-import-template.xlsx");
   res.send(buf);

@@ -106,6 +106,10 @@ export const questionBulkPublishSchema = z.object({
   questionIds: z.array(z.string().uuid()).min(1),
 });
 
+export const questionBulkDraftSchema = z.object({
+  questionIds: z.array(z.string().uuid()).min(1),
+});
+
 export const questionBulkSkillRolesSchema = z.object({
   questionIds: z.array(z.string().uuid()).min(1),
   skillRoleIds: z.array(z.string().uuid()).min(1),

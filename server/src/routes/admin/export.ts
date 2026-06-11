@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { stringify } from "csv-stringify/sync";
 import PDFDocument from "pdfkit";
-import { Role } from "@assessment-os/shared";
+import { Role, type ConceptBreakdown } from "@assessment-os/shared";
 import { prisma } from "../../db.js";
 import { getUser } from "../../middleware/auth.js";
 import { getManagerSkillIds } from "../../services/managerSkills.js";
@@ -23,24 +23,33 @@ function topicNames(assessment: {
   };
 }
 
+async function managerAssessmentScope(user: { id: string; role: string }) {
+  if (user.role !== Role.CAPABILITY_MANAGER) return {};
+  const skillIds = await getManagerSkillIds(user.id);
+  return { skillId: { in: skillIds } };
+}
+
+function completedAttemptsWhere(
+  managerScope: object,
+  query: { topicId?: unknown; from?: unknown; to?: unknown }
+) {
+  const { topicId, from, to } = query;
+  return {
+    status: { in: ["completed", "timed_out"] as const },
+    ...(from && { completedAt: { gte: new Date(String(from)) } }),
+    ...(to && { completedAt: { lte: new Date(String(to)) } }),
+    assessment: {
+      ...managerScope,
+      ...(topicId ? { topics: { some: { topicId: String(topicId) } } } : {}),
+    },
+  };
+}
+
 exportRouter.get("/results", async (req, res) => {
   const user = getUser(req);
-  const { topicId, from, to } = req.query;
-  let managerScope = {};
-  if (user.role === Role.CAPABILITY_MANAGER) {
-    const skillIds = await getManagerSkillIds(user.id);
-    managerScope = { skillId: { in: skillIds } };
-  }
+  const managerScope = await managerAssessmentScope(user);
   const attempts = await prisma.assessmentAttempt.findMany({
-    where: {
-      status: { in: ["completed", "timed_out"] },
-      ...(from && { completedAt: { gte: new Date(String(from)) } }),
-      ...(to && { completedAt: { lte: new Date(String(to)) } }),
-      assessment: {
-        ...managerScope,
-        ...(topicId ? { topics: { some: { topicId: String(topicId) } } } : {}),
-      },
-    },
+    where: completedAttemptsWhere(managerScope, req.query),
     include: {
       assessment: {
         include: {
@@ -82,6 +91,61 @@ exportRouter.get("/results", async (req, res) => {
   const csv = stringify(rows, { header: true });
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", "attachment; filename=results.csv");
+  res.send(csv);
+});
+
+exportRouter.get("/capability-concepts", async (req, res) => {
+  const user = getUser(req);
+  const managerScope = await managerAssessmentScope(user);
+  const attempts = await prisma.assessmentAttempt.findMany({
+    where: {
+      ...completedAttemptsWhere(managerScope, req.query),
+      capabilityReport: { isNot: null },
+    },
+    include: {
+      assessment: {
+        include: {
+          topics: { include: { topic: { include: { category: true } } } },
+          skillRole: true,
+          user: { include: { profile: true } },
+        },
+      },
+      capabilityReport: true,
+    },
+  });
+
+  const rows: Record<string, string | number>[] = [];
+  for (const a of attempts) {
+    const report = a.capabilityReport!;
+    const concepts = report.concepts as ConceptBreakdown[];
+    const { topics } = topicNames(a.assessment);
+    const base = {
+      attemptId: a.id,
+      candidateName: a.assessment.user.name,
+      email: a.assessment.user.email,
+      assessment: a.assessment.displayName ?? topics,
+      skillRole: a.assessment.skillRole.name,
+      score: a.score ?? "",
+      pass: a.score !== null && a.score >= a.assessment.passMark ? "pass" : "fail",
+      completedAt: a.completedAt?.toISOString() ?? "",
+      reportNumber: report.reportNumber,
+    };
+    for (const c of concepts) {
+      rows.push({
+        ...base,
+        conceptCode: c.code,
+        conceptName: c.name,
+        questionCount: c.questionCount,
+        correctCount: c.correctCount,
+        accuracy: c.accuracy,
+        status: c.status,
+      });
+    }
+  }
+
+  const csv = stringify(rows, { header: true });
+  res.setHeader("Content-Type", "text/csv");
+  res.setHeader("Content-Disposition", "attachment; filename=capability-concepts.csv");
   res.send(csv);
 });
 

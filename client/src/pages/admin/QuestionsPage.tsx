@@ -64,7 +64,14 @@ export default function QuestionsPage() {
   const [editingMetaId, setEditingMetaId] = useState<string | null>(null);
   const [editingRoleIds, setEditingRoleIds] = useState<string[]>([]);
   const [editingConceptIds, setEditingConceptIds] = useState<string[]>([]);
-  const [filters, setFilters] = useState({ topicId: "", skillId: "", status: "", skillRoleId: "", difficulty: "" });
+  const [filters, setFilters] = useState({
+    topicId: "",
+    skillId: "",
+    status: "",
+    skillRoleId: "",
+    conceptId: "",
+    difficulty: "",
+  });
   const [missingRolesOnly, setMissingRolesOnly] = useState(false);
   const [missingConceptsOnly, setMissingConceptsOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -124,6 +131,12 @@ export default function QuestionsPage() {
   const filterSkillRoles = useQuery({
     queryKey: ["skill-roles", filters.skillId],
     queryFn: () => api<SkillRole[]>(`/admin/skills/${filters.skillId}/roles`),
+    enabled: !!filters.skillId,
+  });
+
+  const filterSkillConcepts = useQuery({
+    queryKey: ["skill-concepts", filters.skillId],
+    queryFn: () => api<Concept[]>(`/admin/skills/${filters.skillId}/concepts`),
     enabled: !!filters.skillId,
   });
 
@@ -275,6 +288,19 @@ export default function QuestionsPage() {
     },
   });
 
+  const bulkDraft = useMutation({
+    mutationFn: (questionIds: string[]) =>
+      api<{ drafted: number; skipped: number }>("/admin/questions/bulk/draft", {
+        method: "POST",
+        json: { questionIds },
+      }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["questions"] });
+      setSelectedIds([]);
+      showToast(`Moved ${data.drafted} question${data.drafted !== 1 ? "s" : ""} to draft${data.skipped ? ` (${data.skipped} already draft)` : ""}`);
+    },
+  });
+
   const bulkAssignRoles = useMutation({
     mutationFn: (body: { questionIds: string[]; skillRoleIds: string[]; mode: "replace" | "add" }) =>
       api<{ updated: number }>("/admin/questions/bulk/skill-roles", { method: "POST", json: body }),
@@ -321,6 +347,15 @@ export default function QuestionsPage() {
       return;
     }
     bulkPublish.mutate(ids);
+  };
+
+  const draftSelectedPublished = () => {
+    const ids = selectedQuestions.filter((q) => q.status === "published").map((q) => q.id);
+    if (ids.length === 0) {
+      showToast("No published questions in selection");
+      return;
+    }
+    bulkDraft.mutate(ids);
   };
 
   const assignRolesToSelected = (mode: "replace" | "add") => {
@@ -491,6 +526,13 @@ export default function QuestionsPage() {
             onClick={publishSelectedDrafts}
           >
             Publish selected drafts
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={bulkDraft.isPending || selectedQuestions.filter((q) => q.status === "published").length === 0}
+            onClick={draftSelectedPublished}
+          >
+            Move selected to draft
           </Button>
           <Button
             variant="secondary"
@@ -680,10 +722,12 @@ export default function QuestionsPage() {
       </Card>
 
       <Card title="Filter questions">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
           <Select
             value={filters.skillId}
-            onChange={(e) => setFilters({ ...filters, skillId: e.target.value, skillRoleId: "" })}
+            onChange={(e) =>
+              setFilters({ ...filters, skillId: e.target.value, skillRoleId: "", conceptId: "" })
+            }
           >
             <option value="">All skills</option>
             {skills.data?.map((s) => <option key={s.id} value={s.id}>{s.code} – {s.name}</option>)}
@@ -699,6 +743,16 @@ export default function QuestionsPage() {
           >
             <option value="">All roles</option>
             {filterSkillRoles.data?.map((r) => <option key={r.id} value={r.id}>{r.code} – {r.name}</option>)}
+          </Select>
+          <Select
+            value={filters.conceptId}
+            onChange={(e) => setFilters({ ...filters, conceptId: e.target.value })}
+            disabled={!filters.skillId}
+          >
+            <option value="">All concepts</option>
+            {filterSkillConcepts.data?.map((c) => (
+              <option key={c.id} value={c.id}>{c.code} – {c.name}</option>
+            ))}
           </Select>
           <Select value={filters.difficulty} onChange={(e) => setFilters({ ...filters, difficulty: e.target.value })}>
             <option value="">All difficulties</option>

@@ -37,9 +37,14 @@ export default function ResultsPage() {
   return (
     <div>
       <SectionHeader title="Results" description="All completed attempts" />
-      <div className="flex gap-2 mb-5">
+      <div className="flex flex-wrap gap-2 mb-5">
         <a href={downloadUrl("/admin/export/results")}>
-          <Button size="sm">Export CSV</Button>
+          <Button size="sm">Export results (CSV)</Button>
+        </a>
+        <a href={downloadUrl("/admin/export/capability-concepts")}>
+          <Button size="sm" variant="secondary">
+            Export concept breakdown (CSV)
+          </Button>
         </a>
       </div>
       <Card>

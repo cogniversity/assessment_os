@@ -3,6 +3,7 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { Role } from "@assessment-os/shared";
 import { prisma } from "../db.js";
 import { getManagerSkillIds } from "../services/managerSkills.js";
+import { aggregateConceptTrends } from "../services/conceptAnalyticsService.js";
 
 export const analyticsRouter = Router();
 analyticsRouter.use(requireAuth, requireRole(Role.ADMIN, Role.CAPABILITY_MANAGER));
@@ -102,6 +103,131 @@ analyticsRouter.get("/scores-over-time", async (req, res) => {
       average: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
     }))
   );
+});
+
+function parseDateRange(from?: unknown, to?: unknown) {
+  if (!from && !to) return undefined;
+  return {
+    ...(from ? { gte: new Date(String(from)) } : {}),
+    ...(to ? { lte: new Date(String(to)) } : {}),
+  };
+}
+
+analyticsRouter.get("/pass-rates-by-role", async (req, res) => {
+  const user = (req as { user: { id: string; role: string } }).user;
+  const af = await assessmentFilter(user);
+  const roles = await prisma.skillRole.findMany({ orderBy: { name: "asc" } });
+  const data = [];
+  for (const role of roles) {
+    const attempts = await prisma.assessmentAttempt.findMany({
+      where: {
+        status: { in: ["completed", "timed_out"] },
+        assessment: { ...af, skillRoleId: role.id },
+      },
+      include: { assessment: true },
+    });
+    if (!attempts.length) continue;
+    const passed = attempts.filter((a) => (a.score || 0) >= a.assessment.passMark).length;
+    data.push({
+      role: role.name,
+      roleCode: role.code,
+      passRate: Math.round((passed / attempts.length) * 100),
+      attempts: attempts.length,
+    });
+  }
+  res.json(data);
+});
+
+analyticsRouter.get("/pass-rates-by-blueprint", async (req, res) => {
+  const user = (req as { user: { id: string; role: string } }).user;
+  const af = await assessmentFilter(user);
+  const blueprints = await prisma.assessmentBlueprint.findMany({ orderBy: { name: "asc" } });
+  const data: { blueprint: string; passRate: number; attempts: number }[] = [];
+
+  const adHocAttempts = await prisma.assessmentAttempt.findMany({
+    where: {
+      status: { in: ["completed", "timed_out"] },
+      assessment: { ...af, blueprintId: null },
+    },
+    include: { assessment: true },
+  });
+  if (adHocAttempts.length) {
+    const passed = adHocAttempts.filter((a) => (a.score || 0) >= a.assessment.passMark).length;
+    data.push({
+      blueprint: "Ad hoc",
+      passRate: Math.round((passed / adHocAttempts.length) * 100),
+      attempts: adHocAttempts.length,
+    });
+  }
+
+  for (const bp of blueprints) {
+    const attempts = await prisma.assessmentAttempt.findMany({
+      where: {
+        status: { in: ["completed", "timed_out"] },
+        assessment: { ...af, blueprintId: bp.id },
+      },
+      include: { assessment: true },
+    });
+    if (!attempts.length) continue;
+    const passed = attempts.filter((a) => (a.score || 0) >= a.assessment.passMark).length;
+    data.push({
+      blueprint: bp.name,
+      passRate: Math.round((passed / attempts.length) * 100),
+      attempts: attempts.length,
+    });
+  }
+  res.json(data);
+});
+
+analyticsRouter.get("/blueprint-summary", async (req, res) => {
+  const user = (req as { user: { id: string; role: string } }).user;
+  const af = await assessmentFilter(user);
+  const blueprints = await prisma.assessmentBlueprint.findMany({ orderBy: { name: "asc" } });
+  const rows: {
+    blueprint: string;
+    attempts: number;
+    candidates: number;
+    averageScore: number;
+    passRate: number;
+  }[] = [];
+
+  async function summarize(label: string, blueprintId: string | null) {
+    const attempts = await prisma.assessmentAttempt.findMany({
+      where: {
+        status: { in: ["completed", "timed_out"] },
+        assessment: { ...af, blueprintId },
+      },
+      include: { assessment: true },
+    });
+    if (!attempts.length) return;
+    const passed = attempts.filter((a) => (a.score || 0) >= a.assessment.passMark).length;
+    const avg =
+      attempts.reduce((s, a) => s + (a.score || 0), 0) / attempts.length;
+    rows.push({
+      blueprint: label,
+      attempts: attempts.length,
+      candidates: new Set(attempts.map((a) => a.assessment.userId)).size,
+      averageScore: Math.round(avg),
+      passRate: Math.round((passed / attempts.length) * 100),
+    });
+  }
+
+  await summarize("Ad hoc", null);
+  for (const bp of blueprints) {
+    await summarize(bp.name, bp.id);
+  }
+  res.json(rows);
+});
+
+analyticsRouter.get("/concept-trends", async (req, res) => {
+  const user = (req as { user: { id: string; role: string } }).user;
+  const af = await assessmentFilter(user);
+  const { skillId, from, to } = req.query;
+  const data = await aggregateConceptTrends(
+    { assessmentFilter: af, completedAt: parseDateRange(from, to) },
+    skillId ? String(skillId) : undefined
+  );
+  res.json(data);
 });
 
 analyticsRouter.get("/status-breakdown", async (req, res) => {

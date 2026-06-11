@@ -344,16 +344,19 @@ flowchart LR
 | System | Where defined | Used for |
 |--------|---------------|----------|
 | **IBM App ID roles** | App ID → Profiles & roles | Login mapping to app RBAC |
-| **App `User.role`** | DB after login; editable on Admin → Users | In-app permissions |
+| **App `User.roles[]`** | DB after login; editable on Admin → Users; session `activeRole` | In-app permissions |
 | **SkillRole** | Per skill in question bank | Question/blueprint eligibility only |
 
 ### 5.4 Open gaps (prioritized)
 
-1. **Blueprint & Assignment admin UI** — frontend forms for the new multi-topic blueprint schema
-2. **Question edit UI** — edit skill roles, difficulty after create
-3. **Skill roles UI** — admin screen to manage roles per skill
-4. **Analytics** — blueprint-level aggregation, pass-rate per topic/role
-5. **Candidate result page** — show topic breakdown for multi-topic assessments
+**Recently built (no longer gaps):** Blueprint & Assignment admin UI; skill roles UI on Skills page; question skill-role and concept edit (inline + bulk); multi-role switching; capability reports (PDF + in-app breakdown); analytics by topic, skill role, blueprint, and concept trends; XLSX `conceptCodes` import; concept filter on question bank; bulk draft/unpublish.
+
+**Remaining gaps:**
+
+1. **Full question content edit** — change stem, options, correct answers, difficulty, or topic after create (metadata edit exists; content edit does not)
+2. **Candidate per-topic score breakdown** — multi-topic assessments show overall score only on the result page
+3. **Server TypeScript clean build** — `server` `tsc` has pre-existing errors blocking monorepo `npm run build`
+4. **Out of scope (documented):** email notifications, video proctoring, auto-resume after disconnect
 
 ---
 

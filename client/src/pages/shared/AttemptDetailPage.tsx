@@ -4,10 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import { api, downloadUrl } from "../../api/client";
 import { assessmentTopicLabel } from "../../utils/assessment";
 import { AttemptProctoringPanel } from "../../components/proctoring/AttemptProctoringPanel";
+import type { CapabilitySummary, ConceptBreakdown } from "@assessment-os/shared";
+import { CapabilityBreakdownTable } from "../../components/CapabilityBreakdownTable";
 import { Badge } from "../../components/Layout";
-import { CheckCircle, XCircle, Download, User, Clock, BarChart2, ShieldAlert } from "lucide-react";
+import { CheckCircle, XCircle, Download, User, Clock, BarChart2, ShieldAlert, Sparkles } from "lucide-react";
 
-type Tab = "overview" | "proctoring";
+type Tab = "overview" | "capability" | "proctoring";
 
 interface AttemptDetail {
   id: string;
@@ -27,7 +29,11 @@ interface AttemptDetail {
   proctoringEvents: { id: string; eventType: string; occurredAt: string }[];
   photos: { id: string; kind: string; capturedAt: string }[];
   certificate?: { certNumber: string; proficiency?: string } | null;
-  capabilityReport?: { reportNumber: string; concepts: unknown[] } | null;
+  capabilityReport?: {
+    reportNumber: string;
+    summary: CapabilitySummary;
+    concepts: ConceptBreakdown[];
+  } | null;
 }
 
 export default function AttemptDetailPage() {
@@ -150,7 +156,13 @@ export default function AttemptDetailPage() {
       {/* Tabs */}
       <div className="border-b border-slate-200 mb-6">
         <div className="flex gap-0">
-          {(["overview", "proctoring"] as Tab[]).map((t) => (
+          {(
+            [
+              "overview",
+              ...(data.capabilityReport ? (["capability"] as const) : []),
+              "proctoring",
+            ] as Tab[]
+          ).map((t) => (
             <button
               key={t}
               type="button"
@@ -165,6 +177,7 @@ export default function AttemptDetailPage() {
                 <ShieldAlert size={14} className={proctoringIssues > 0 ? "text-red-500" : ""} />
               )}
               {t === "overview" && <User size={14} />}
+              {t === "capability" && <Sparkles size={14} />}
               {t.charAt(0).toUpperCase() + t.slice(1)}
               {t === "proctoring" && proctoringIssues > 0 && (
                 <span className="ml-1 bg-red-100 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
@@ -221,8 +234,26 @@ export default function AttemptDetailPage() {
             <div className="border-t border-slate-100 pt-4 mt-4">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Capability report</p>
               <p className="text-sm font-mono text-emerald-700">{data.capabilityReport.reportNumber}</p>
+              <button
+                type="button"
+                onClick={() => setTab("capability")}
+                className="text-xs text-indigo-600 hover:underline mt-1"
+              >
+                View concept breakdown
+              </button>
             </div>
           )}
+        </div>
+      )}
+
+      {tab === "capability" && data.capabilityReport && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-6">
+          <CapabilityBreakdownTable
+            summary={data.capabilityReport.summary}
+            concepts={data.capabilityReport.concepts}
+            reportNumber={data.capabilityReport.reportNumber}
+            pdfHref={downloadUrl(`/capability-reports/attempt/${data.id}/pdf`)}
+          />
         </div>
       )}
 

@@ -3,6 +3,7 @@ import {
   questionSchema,
   questionUpdateSchema,
   questionBulkPublishSchema,
+  questionBulkDraftSchema,
   questionBulkSkillRolesSchema,
   questionBulkConceptsSchema,
   questionBulkDeleteSchema,
@@ -45,12 +46,13 @@ async function assertQuestionAccess(
 
 questionsRouter.get("/", async (req, res) => {
   const user = getUser(req);
-  const { topicId, skillId, skillRoleId, status, difficulty } = req.query;
+  const { topicId, skillId, skillRoleId, conceptId, status, difficulty } = req.query;
 
   const filters = {
     ...(topicId && { topicId: String(topicId) }),
     ...(skillId && { skillId: String(skillId) }),
     ...(skillRoleId && { skillRoles: { some: { skillRoleId: String(skillRoleId) } } }),
+    ...(conceptId && { concepts: { some: { conceptId: String(conceptId) } } }),
     ...(status && { status: status as "draft" | "published" }),
     ...(difficulty && { difficulty: difficulty as never }),
   };
@@ -141,6 +143,41 @@ questionsRouter.post("/bulk/publish", async (req, res, next) => {
       published++;
     }
     res.json({ published, skipped, total: rows.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+questionsRouter.post("/bulk/draft", async (req, res, next) => {
+  try {
+    const user = getUser(req);
+    const { questionIds } = questionBulkDraftSchema.parse(req.body);
+    const rows = await prisma.question.findMany({
+      where: { id: { in: questionIds } },
+      select: { id: true, skillId: true, topicId: true, status: true },
+    });
+    if (rows.length !== questionIds.length) {
+      res.status(400).json({ error: "One or more questionIds not found" });
+      return;
+    }
+    let drafted = 0;
+    let skipped = 0;
+    for (const row of rows) {
+      if (!(await assertQuestionAccess(user.id, user.role, row.skillId, row.topicId))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (row.status === "draft") {
+        skipped++;
+        continue;
+      }
+      await prisma.question.update({
+        where: { id: row.id },
+        data: { status: "draft" },
+      });
+      drafted++;
+    }
+    res.json({ drafted, skipped, total: rows.length });
   } catch (e) {
     next(e);
   }

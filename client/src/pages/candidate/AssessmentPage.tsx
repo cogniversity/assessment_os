@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiForm, downloadUrl } from "../../api/client";
+import type { CapabilitySummary, ConceptBreakdown } from "@assessment-os/shared";
+import { CapabilityBreakdownTable } from "../../components/CapabilityBreakdownTable";
 import { Layout, Card, Button } from "../../components/Layout";
 import { assessmentTopicLabel } from "../../utils/assessment";
 import { ReattemptRequestPanel } from "../../components/ReattemptRequestPanel";
@@ -48,12 +50,19 @@ interface AttemptSummary {
 interface ResultPayload {
   passMark: number;
   issueCertificate?: boolean;
+  issueCapabilityReport?: boolean;
+  shareCapabilityWithCandidate?: boolean;
   revealAnswers: boolean;
   attempt: {
     id: string;
     score: number | null;
     completedAt: string | null;
     certificate?: { certNumber: string; proficiency?: string } | null;
+    capabilityReport?: {
+      reportNumber: string;
+      summary: CapabilitySummary;
+      concepts: ConceptBreakdown[];
+    } | null;
   };
   attempts: AttemptSummary[];
   questions?: Question[];
@@ -203,6 +212,19 @@ function CompletedResults({ id, summary }: { id: string; summary: AssessmentDeta
             You passed, but no certificate is linked to this attempt yet. Refresh the page or check your profile.
           </p>
         )}
+        {data?.issueCapabilityReport &&
+          data.attempt?.capabilityReport &&
+          data.shareCapabilityWithCandidate && (
+            <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="font-medium text-emerald-900 mb-2">Capability report</p>
+              <CapabilityBreakdownTable
+                summary={data.attempt.capabilityReport.summary}
+                concepts={data.attempt.capabilityReport.concepts}
+                reportNumber={data.attempt.capabilityReport.reportNumber}
+                pdfHref={downloadUrl(`/capability-reports/attempt/${data.attempt.id}/pdf`)}
+              />
+            </div>
+          )}
         {isError && (
           <p className="text-sm text-amber-700 mb-4">{(error as Error).message}</p>
         )}

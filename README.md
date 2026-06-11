@@ -31,15 +31,17 @@ Use it for technical screening, competency testing, training certification, or w
 
 ## Overview
 
-Assessment OS is a full-stack **online assessment and testing platform** with three roles:
+Assessment OS is a full-stack **online assessment and testing platform** with three access roles:
 
 | Role | Purpose |
 |------|---------|
-| **Admin** | Question bank, blueprints, assignments, users, App ID directory, exports |
-| **Capability Manager** | Assign assessments, review results, manage candidate profiles |
-| **Candidate** | Take timed MCQ tests, view results, download certificates |
+| **Admin** | Question bank, skills/concepts, blueprints, assignments, users, App ID directory, exports |
+| **Capability Manager** | Assign assessments, review results, manage candidate profiles and proficiencies |
+| **Candidate** | Take timed MCQ tests, view results, download certificates and capability reports |
 
-Admins define **reusable assessment blueprints** (skill + topics + difficulty mix + timer + pass mark + certificate rules), then assign snapshots to candidates. Each attempt records answers, scores, proctoring events, and webcam photos for review.
+Users may hold **multiple roles** (e.g. manager + candidate). A header **role switcher** sets the active context; the default is the highest privilege (`admin` → `capability_manager` → `candidate`).
+
+Admins define **reusable assessment blueprints** (skill + topics + difficulty mix + timer + pass mark + certificate and capability-report rules), then assign snapshots to candidates. Each attempt records answers, scores, proctoring events, and webcam photos for review.
 
 **Repository:** [github.com/cogniversity/assessment_os](https://github.com/cogniversity/assessment_os)
 
@@ -49,12 +51,14 @@ Admins define **reusable assessment blueprints** (skill + topics + difficulty mi
 
 ### Assessment design & delivery
 
-- **Question bank** — Categories, topics, skills, and per-skill roles (e.g. Developer, Senior Developer)
+- **Question bank** — Categories, topics, skills, per-skill **roles** (e.g. Associate Developer, Senior Developer), and optional **concepts** per skill
+- **Question tagging** — Tag questions with skill roles and concepts; inline edit, bulk assign, filter by concept, bulk publish/draft/delete
 - **MCQ types** — Single-select and multi-select with configurable partial-credit scoring
-- **Named blueprints** — Reusable templates: difficulty mix, time limit, pass mark, multi-topic pools
+- **Named blueprints** — Reusable templates: difficulty mix, time limit, pass mark, multi-topic pools, certificate and capability-report options
 - **Dynamic papers** — Questions drawn from the union of selected topics at attempt start
 - **Free navigation** — Candidates can move between questions during the test
 - **Timers** — Per-assessment time limits with optional no-limit mode
+- **XLSX question import** — Spreadsheet template with `skillRoleCodes` and optional `conceptCodes`; validate, preview, and commit
 
 ### Online proctoring
 
@@ -64,27 +68,34 @@ Admins define **reusable assessment blueprints** (skill + topics + difficulty mi
 - **Integrity controls** — Tab-switch detection, fullscreen enforcement, copy/paste/right-click blocking
 - **Reviewer UI** — Admin and manager attempt detail pages with photo gallery and event timeline
 
+### Capability reports & proficiency
+
+- **Concept-level reports** — When enabled on a blueprint/assignment, completed attempts generate a capability report classifying each tagged concept as **strength**, **neutral**, or **gap** (configurable thresholds)
+- **In-app breakdown** — Attempt detail and candidate result pages show a concept table; PDF download for managers and candidates (when shared)
+- **Skill proficiencies** — Per skill + role proficiency on candidate profiles, updated from passing attempts; managers can override with audit trail
+
 ### Certificates & results
 
 - **PDF certificates** — Issued when score meets pass mark; optional proficiency band and expiry
 - **Verification** — Auth-gated certificate verify endpoint with UUID
-- **Results export** — CSV and PDF attempt reports
-- **Analytics** — Dashboards for admins and capability managers
+- **Results export** — CSV (one row per attempt) and PDF attempt reports; separate **concept breakdown CSV** (one row per attempt × concept)
+- **Analytics** — Pass rates by topic, skill role, and blueprint; blueprint summary; concept trends aggregated from capability reports
 - **Reattempt requests** — Managers can request retakes; admins approve
 
 ### Candidate & workforce profiles
 
 - Staffing fields (country, employee/project/customer, allocation → FTE)
 - Admin-defined custom profile fields
+- **Skill proficiencies** and shared **capability report** PDFs on the candidate profile
 - External certificates, remarks, proficiency overrides
 - Full audit log on profile and proficiency changes
 
 ### Administration & integrations
 
-- **IBM App ID OIDC** — Enterprise login with role mapping (`Admin`, `Capability_Manager`, `Candidate`)
+- **IBM App ID OIDC** — Enterprise login; App ID roles map to app `User.roles[]` (`Admin`, `Capability_Manager`, `Candidate`)
+- **Multi-role RBAC** — Users with several roles switch active context in the header; admins assign multiple roles on the Users page
 - **Cloud Directory management** — List, search, create, and bulk-import App ID users from the admin UI
 - **User provisioning** — Pre-create local candidate profiles before first IBM login
-- **XLSX question import** — Offline authoring template with validation, preview, and commit
 - **Dev mock auth** — Email-based login when OIDC is not configured
 
 ---
@@ -93,7 +104,7 @@ Admins define **reusable assessment blueprints** (skill + topics + difficulty mi
 
 - **Technical hiring** — Screen developers with skill- and role-specific MCQ pools
 - **Certification programs** — Issue timed, proctored exams with PDF credentials
-- **Workforce competency tracking** — Map skills, topics, and proficiency across teams
+- **Workforce competency tracking** — Map skills, topics, concepts, proficiencies, and capability gaps across teams
 - **Training providers** — Import questions via spreadsheet, assign blueprints at scale
 - **Enterprise deployments** — Docker Compose stack with IBM App ID SSO
 
@@ -106,7 +117,7 @@ Admins define **reusable assessment blueprints** (skill + topics + difficulty mi
 | **Frontend** | React 19, Vite 6, Tailwind CSS 4, TanStack Query, Recharts |
 | **Backend** | Node.js 22, Express 5, Prisma ORM, Zod (shared schemas) |
 | **Database** | PostgreSQL 17 |
-| **Auth** | IBM App ID (OIDC), express-session, role-based access control |
+| **Auth** | IBM App ID (OIDC), express-session, multi-role RBAC with active-role switching |
 | **Documents** | PDFKit (certificates, reports), XLSX import/export |
 | **Deployment** | Docker Compose; pre-built images on Docker Hub (`cogniverse/assessment-os-api`, `cogniverse/assessment-os-web`) |
 
@@ -233,12 +244,12 @@ Assessment OS integrates with **IBM Cloud App ID** for OIDC single sign-on and C
    DEV_AUTH_ENABLED=false
    ```
 
-4. **Role mapping:** App ID roles map to app roles by default:
+4. **Role mapping:** App ID roles merge into `User.roles[]` by default (users can hold more than one):
    - `Admin` → Admin
    - `Capability_Manager` → Capability Manager
    - `Candidate` → Candidate
 
-   Override with `APPID_ROLE_ADMIN`, `APPID_ROLE_MANAGER`, `APPID_ROLE_CANDIDATE`. If IBM sends no roles, `ADMIN_EMAILS` and `CAPABILITY_MANAGER_EMAILS` are used as fallback.
+   Override with `APPID_ROLE_ADMIN`, `APPID_ROLE_MANAGER`, `APPID_ROLE_CANDIDATE`. If IBM sends no roles, `ADMIN_EMAILS` and `CAPABILITY_MANAGER_EMAILS` are used as fallback. After login, use the header role switcher when multiple roles apply.
 
 5. Optional: embed roles in OIDC tokens in App ID ([customizing tokens](https://cloud.ibm.com/docs/appid?topic=appid-customizing-tokens)).
 
@@ -331,4 +342,4 @@ assessment_os/
 
 ---
 
-**Keywords:** skills assessment platform, online proctoring, MCQ testing, technical screening, certification exams, talent evaluation, IBM App ID, React assessment app, PostgreSQL question bank, Docker self-hosted LMS alternative.
+**Keywords:** skills assessment platform, online proctoring, MCQ testing, technical screening, certification exams, talent evaluation, capability reports, skills gap analysis, IBM App ID, React assessment app, PostgreSQL question bank, Docker self-hosted LMS alternative.

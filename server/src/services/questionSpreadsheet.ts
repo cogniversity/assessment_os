@@ -5,6 +5,7 @@ const TEMPLATE_HEADERS = [
   "skillCode",
   "topicName",
   "skillRoleCodes",
+  "conceptCodes",
   "difficulty",
   "questionStem",
   "optionA",
@@ -23,6 +24,7 @@ const SAMPLE_ROWS: string[][] = [
     "JS001",
     "JavaScript Basics",
     "SR_DEV",
+    "CLOSURES",
     "medium",
     "What is typeof null?",
     "object",
@@ -39,6 +41,7 @@ const SAMPLE_ROWS: string[][] = [
     "JS001",
     "JavaScript Basics",
     "ASSOC,SR_DEV",
+    "HOISTING,CLOSURES",
     "easy",
     "Which keywords declare block-scoped variables?",
     "var",
@@ -122,7 +125,8 @@ export async function parseQuestionSpreadsheet(
 }
 
 export async function buildQuestionImportTemplateBuffer(
-  refRows: { skillCode: string; skillName: string; roleCode: string; roleName: string }[]
+  roleRefRows: { skillCode: string; skillName: string; roleCode: string; roleName: string }[],
+  conceptRefRows: { skillCode: string; conceptCode: string; conceptName: string }[] = []
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const questions = workbook.addWorksheet("Questions");
@@ -130,13 +134,24 @@ export async function buildQuestionImportTemplateBuffer(
   for (const row of SAMPLE_ROWS) questions.addRow(row);
 
   const ref = workbook.addWorksheet("Skills & Roles");
-  if (refRows.length === 0) {
+  if (roleRefRows.length === 0) {
     ref.addRow(["info"]);
     ref.addRow(["No roles defined yet"]);
   } else {
     ref.addRow(["skillCode", "skillName", "roleCode", "roleName"]);
-    for (const row of refRows) {
+    for (const row of roleRefRows) {
       ref.addRow([row.skillCode, row.skillName, row.roleCode, row.roleName]);
+    }
+  }
+
+  const concepts = workbook.addWorksheet("Skills & Concepts");
+  if (conceptRefRows.length === 0) {
+    concepts.addRow(["info"]);
+    concepts.addRow(["No concepts defined yet"]);
+  } else {
+    concepts.addRow(["skillCode", "conceptCode", "conceptName"]);
+    for (const row of conceptRefRows) {
+      concepts.addRow([row.skillCode, row.conceptCode, row.conceptName]);
     }
   }
 

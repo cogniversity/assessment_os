@@ -1,28 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
+import type { CapabilitySummary, ConceptBreakdown } from "@assessment-os/shared";
 import { prisma } from "../db.js";
 
-export type ConceptBreakdown = {
-  conceptId: string;
-  code: string;
-  name: string;
-  questionCount: number;
-  correctCount: number;
-  accuracy: number;
-  status: "strength" | "neutral" | "gap";
-};
-
-export type CapabilitySummary = {
-  overallScore: number;
-  passMark: number;
-  passed: boolean;
-  skillCode: string;
-  skillName: string;
-  skillRoleCode: string;
-  skillRoleName: string;
-  untaggedQuestionCount: number;
-  strengthThreshold: number;
-  gapThreshold: number;
-};
+export type { CapabilitySummary, ConceptBreakdown };
 
 function classifyConcept(
   accuracy: number,
