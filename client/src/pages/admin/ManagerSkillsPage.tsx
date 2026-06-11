@@ -14,7 +14,7 @@ type ManagerSkillRow = {
   skill: { id: string; name: string; code: string };
 };
 
-type User = { id: string; name: string; email: string; role: string };
+type User = { id: string; name: string; email: string; roles: string[] };
 type Skill = { id: string; name: string; code: string };
 
 export default function ManagerSkillsPage() {
@@ -47,7 +47,7 @@ export default function ManagerSkillsPage() {
     queryFn: () => api("/admin/skills"),
   });
 
-  const managers = users.filter((u) => u.role === "capability_manager");
+  const managers = users.filter((u) => u.roles.includes("capability_manager"));
 
   const assign = useMutation({
     mutationFn: (body: { userId: string; skillId: string }) =>
