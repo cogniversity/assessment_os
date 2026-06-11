@@ -3,7 +3,11 @@ import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { Role } from "@assessment-os/shared";
 import { prisma } from "../../db.js";
 import { remarkSchema, proficiencyOverrideSchema } from "@assessment-os/shared";
-import { updateProfile, overrideProficiency, ensureProfile } from "../../services/profileService.js";
+import { updateProfile } from "../../services/profileService.js";
+import {
+  listSkillProficienciesForUser,
+  overrideSkillProficiency,
+} from "../../services/skillProficiencyService.js";
 import { getManagerSkillIds } from "../../services/managerSkills.js";
 import { getManagerQuestionBankGrants } from "../../services/managerQuestionBanks.js";
 
@@ -113,7 +117,8 @@ managerRouter.get("/candidates/:userId", async (req, res) => {
   const remarks = user.remarksReceived.filter(
     (r) => r.visibility === "normal" || actor.role === Role.ADMIN || actor.role === Role.CAPABILITY_MANAGER
   );
-  res.json({ ...user, remarksReceived: remarks });
+  const skillProficiencies = await listSkillProficienciesForUser(req.params.userId);
+  res.json({ ...user, remarksReceived: remarks, skillProficiencies });
 });
 
 managerRouter.patch("/candidates/:userId/profile", async (req, res, next) => {
@@ -126,12 +131,27 @@ managerRouter.patch("/candidates/:userId/profile", async (req, res, next) => {
   }
 });
 
+managerRouter.get("/candidates/:userId/skill-proficiencies", async (req, res, next) => {
+  try {
+    res.json(await listSkillProficienciesForUser(req.params.userId));
+  } catch (e) {
+    next(e);
+  }
+});
+
 managerRouter.post("/candidates/:userId/proficiency", async (req, res, next) => {
   try {
     const actor = (req as { user: { id: string } }).user;
-    const { proficiency, changeReason } = proficiencyOverrideSchema.parse(req.body);
-    const profile = await overrideProficiency(req.params.userId, actor.id, proficiency, changeReason);
-    res.json(profile);
+    const { skillId, skillRoleId, proficiency, changeReason } = proficiencyOverrideSchema.parse(req.body);
+    const row = await overrideSkillProficiency(
+      req.params.userId,
+      skillId,
+      skillRoleId,
+      actor.id,
+      proficiency,
+      changeReason
+    );
+    res.json(row);
   } catch (e) {
     next(e);
   }

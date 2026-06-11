@@ -249,6 +249,112 @@ function RolesPanel({ skill }: { skill: Skill }) {
   );
 }
 
+interface Concept {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  questionCount: number;
+}
+
+const emptyConceptForm = { code: "", name: "", description: "", sortOrder: "0" };
+
+function ConceptsPanel({ skill }: { skill: Skill }) {
+  const qc = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const [addForm, setAddForm] = useState(emptyConceptForm);
+  const [conceptError, setConceptError] = useState("");
+
+  const concepts = useQuery({
+    queryKey: ["skill-concepts", skill.id],
+    queryFn: () => api<Concept[]>(`/admin/skills/${skill.id}/concepts`),
+    enabled: expanded,
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["skill-concepts", skill.id] });
+  };
+
+  const addConcept = useMutation({
+    mutationFn: () =>
+      api(`/admin/skills/${skill.id}/concepts`, {
+        method: "POST",
+        json: {
+          code: addForm.code.toUpperCase(),
+          name: addForm.name,
+          description: addForm.description || undefined,
+          sortOrder: parseInt(addForm.sortOrder, 10) || 0,
+        },
+      }),
+    onSuccess: () => {
+      setAddForm(emptyConceptForm);
+      setConceptError("");
+      invalidate();
+    },
+    onError: (e: Error) => setConceptError(e.message),
+  });
+
+  const deleteConcept = useMutation({
+    mutationFn: (conceptId: string) =>
+      api(`/admin/skills/${skill.id}/concepts/${conceptId}`, { method: "DELETE" }),
+    onSuccess: invalidate,
+    onError: (e: Error) => setConceptError(e.message),
+  });
+
+  return (
+    <div className="mt-2 border-t border-slate-100 pt-2">
+      <button
+        type="button"
+        className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-indigo-600"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        Concepts (optional tags for capability reports)
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-2 pl-4">
+          {concepts.data?.map((c) => (
+            <div key={c.id} className="flex items-center justify-between text-xs gap-2">
+              <span>
+                <span className="font-mono text-indigo-700">{c.code}</span> — {c.name}
+                <span className="text-slate-400 ml-1">({c.questionCount} q)</span>
+              </span>
+              <button
+                type="button"
+                className="text-red-600 hover:underline"
+                onClick={() => deleteConcept.mutate(c.id)}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+          <div className="grid md:grid-cols-3 gap-2 pt-2">
+            <Input
+              value={addForm.code}
+              onChange={(e) => setAddForm((f) => ({ ...f, code: e.target.value }))}
+              placeholder="Code e.g. CLOSURES"
+            />
+            <Input
+              value={addForm.name}
+              onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
+              placeholder="Display name"
+            />
+            <Button
+              onClick={() => addConcept.mutate()}
+              disabled={!addForm.code || !addForm.name || addConcept.isPending}
+            >
+              <Plus size={13} /> Add
+            </Button>
+          </div>
+          {conceptError && <p className="text-xs text-red-600">{conceptError}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SkillsPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
@@ -420,6 +526,7 @@ export default function SkillsPage() {
                       </div>
                     </div>
                     <RolesPanel skill={s} />
+                    <ConceptsPanel skill={s} />
                   </div>
                 )}
               </div>

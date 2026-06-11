@@ -4,6 +4,7 @@ import { api, apiForm, downloadUrl } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { Layout, Card, Button, Input, Badge } from "../../components/Layout";
 import { Save, Upload, CheckCircle2, FileText, AlertCircle, ExternalLink } from "lucide-react";
+import { PROFICIENCY_LABELS } from "@assessment-os/shared";
 
 interface ExternalCertificate {
   id: string;
@@ -30,6 +31,16 @@ export default function CandidateProfile() {
         };
         fieldDefs: { key: string; label: string; type: string }[];
         platformCertificates: { certNumber: string; proficiency: string }[];
+        skillProficiencies: {
+          proficiency: string | null;
+          skill: { name: string };
+          skillRole: { name: string };
+        }[];
+        capabilityReports: {
+          reportNumber: string;
+          attemptId: string;
+          summary: { skillName: string; skillRoleName: string; overallScore: number };
+        }[];
       }>("/profile/me"),
   });
 
@@ -108,6 +119,44 @@ export default function CandidateProfile() {
               {save.isPending ? "Saving…" : "Save profile"}
             </Button>
           </div>
+        </Card>
+
+        <Card title="Skill proficiencies" subtitle="Your certified level per skill and role.">
+          <ul className="space-y-2 text-sm">
+            {(data.skillProficiencies ?? []).map((row, i) => (
+              <li key={i}>
+                {row.skill.name} · {row.skillRole.name}:{" "}
+                <span className="font-medium">
+                  {row.proficiency ? PROFICIENCY_LABELS[row.proficiency] ?? row.proficiency : "—"}
+                </span>
+              </li>
+            ))}
+            {(data.skillProficiencies ?? []).length === 0 && (
+              <p className="text-slate-500">No skill proficiencies yet.</p>
+            )}
+          </ul>
+        </Card>
+
+        <Card title="Capability reports" subtitle="Concept-level breakdown when shared by your assessor.">
+          <ul className="space-y-2 text-sm">
+            {(data.capabilityReports ?? []).map((r) => (
+              <li key={r.reportNumber} className="flex justify-between gap-2">
+                <span>
+                  {r.summary.skillName} · {r.summary.skillRoleName} — {r.summary.overallScore}%
+                </span>
+                <a
+                  href={downloadUrl(`/capability-reports/attempt/${r.attemptId}/pdf`)}
+                  className="text-indigo-600 hover:underline shrink-0 inline-flex items-center gap-1"
+                >
+                  <ExternalLink size={12} />
+                  PDF
+                </a>
+              </li>
+            ))}
+            {(data.capabilityReports ?? []).length === 0 && (
+              <p className="text-slate-500">No capability reports shared yet.</p>
+            )}
+          </ul>
         </Card>
 
         <Card title="Platform certificates" subtitle="Issued by Assessment OS when you pass an assessment.">

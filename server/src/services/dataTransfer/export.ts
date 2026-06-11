@@ -21,6 +21,7 @@ export async function buildExportBundle(sections: ExportSection[]): Promise<Expo
     data.profileFieldDefinitions = (await prisma.profileFieldDefinition.findMany()).map(row);
     data.users = (await prisma.user.findMany()).map(row);
     data.candidateProfiles = (await prisma.candidateProfile.findMany()).map(row);
+    data.candidateSkillProficiencies = (await prisma.candidateSkillProficiency.findMany()).map(row);
     data.externalCertificates = (await prisma.externalCertificate.findMany()).map(row);
     data.candidateRemarks = (await prisma.candidateRemark.findMany()).map(row);
     data.profileAuditLogs = (await prisma.profileAuditLog.findMany()).map(row);
@@ -30,12 +31,14 @@ export async function buildExportBundle(sections: ExportSection[]): Promise<Expo
     data.categories = (await prisma.category.findMany()).map(row);
     data.skills = (await prisma.skill.findMany()).map(row);
     data.skillRoles = (await prisma.skillRole.findMany()).map(row);
+    data.concepts = (await prisma.concept.findMany()).map(row);
     data.topics = (await prisma.topic.findMany()).map(row);
   }
 
   if (set.has("questions")) {
     data.questions = (await prisma.question.findMany()).map(row);
     data.questionSkillRoles = (await prisma.questionSkillRole.findMany()).map(row);
+    data.questionConcepts = (await prisma.questionConcept.findMany()).map(row);
   }
 
   if (set.has("blueprints")) {
@@ -55,6 +58,7 @@ export async function buildExportBundle(sections: ExportSection[]): Promise<Expo
     data.attemptPhotos = (await prisma.attemptPhoto.findMany()).map(row);
     data.proctoringEvents = (await prisma.proctoringEvent.findMany()).map(row);
     data.certificates = (await prisma.certificate.findMany()).map(row);
+    data.capabilityReports = (await prisma.capabilityReport.findMany()).map(row);
   }
 
   return {

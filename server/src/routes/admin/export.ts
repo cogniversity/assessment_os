@@ -10,12 +10,16 @@ export const exportRouter = Router();
 
 function topicNames(assessment: {
   displayName: string | null;
-  topics: { topic: { name: string; category: { name: string } } }[];
+  topics: { topic: { name: string; category?: { name: string } | null } }[];
 }) {
   const names = assessment.topics.map((t) => t.topic.name);
   return {
     topics: names.join(", ") || assessment.displayName || "—",
-    category: assessment.topics.map((t) => t.topic.category.name).filter(Boolean).join(", ") || "—",
+    category:
+      assessment.topics
+        .map((t) => t.topic.category?.name)
+        .filter(Boolean)
+        .join(", ") || "—",
   };
 }
 
@@ -45,6 +49,8 @@ exportRouter.get("/results", async (req, res) => {
           user: { include: { profile: true } },
         },
       },
+      certificate: true,
+      capabilityReport: true,
       _count: { select: { proctoringEvents: true } },
     },
   });
@@ -68,7 +74,8 @@ exportRouter.get("/results", async (req, res) => {
       completedAt: a.completedAt?.toISOString() ?? "",
       autoSubmitted: a.autoSubmittedAt ? "yes" : "no",
       proctoringEvents: a._count.proctoringEvents,
-      proficiency: p?.currentProficiency ?? "",
+      proficiency: a.certificate?.proficiency ?? "",
+      capabilityReport: a.capabilityReport?.reportNumber ?? "",
     };
   });
 
@@ -84,10 +91,13 @@ exportRouter.get("/attempt/:attemptId/pdf", async (req, res) => {
     include: {
       assessment: {
         include: {
-          topics: { include: { topic: true } },
+          topics: { include: { topic: { include: { category: true } } } },
+          skillRole: true,
           user: { include: { profile: true } },
         },
       },
+      certificate: true,
+      capabilityReport: true,
       answers: { include: { question: true } },
       proctoringEvents: true,
     },
@@ -106,7 +116,7 @@ exportRouter.get("/attempt/:attemptId/pdf", async (req, res) => {
     }
   }
 
-  const { topics } = topicNames(attempt.assessment);
+  const { topics, category } = topicNames(attempt.assessment);
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename=attempt-${attempt.id}.pdf`);
@@ -117,9 +127,17 @@ exportRouter.get("/attempt/:attemptId/pdf", async (req, res) => {
   doc.moveDown();
   doc.fontSize(12).text(`Candidate: ${attempt.assessment.user.name}`);
   doc.text(`Assessment: ${attempt.assessment.displayName ?? topics}`);
+  doc.text(`Skill role: ${attempt.assessment.skillRole.name}`);
   doc.text(`Topics: ${topics}`);
+  doc.text(`Category: ${category}`);
   doc.text(`Score: ${attempt.score}%`);
   doc.text(`Pass mark: ${attempt.assessment.passMark}%`);
+  if (attempt.certificate?.proficiency) {
+    doc.text(`Proficiency: ${attempt.certificate.proficiency.replace(/_/g, " ")}`);
+  }
+  if (attempt.capabilityReport) {
+    doc.text(`Capability report: ${attempt.capabilityReport.reportNumber}`);
+  }
   doc.moveDown();
   doc.text("Questions:");
   for (const a of attempt.answers) {

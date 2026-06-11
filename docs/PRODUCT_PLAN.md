@@ -102,6 +102,13 @@ One **blueprint** can draw from **many topics** — the eligibility pool is the 
 | `revealAnswersAfterTest` | show correct answers on result page |
 | `proficiencyThresholds` | [novice, advanced_beginner, competent, proficient, expert] breakpoints |
 | `multiSelectScoringMode` | How **multi-select** questions are scored (see §4) |
+| `issueCapabilityReport` | Generate concept-level capability report when attempt completes |
+| `shareCapabilityWithCandidate` | Candidate can view/download their capability report |
+| `capabilityStrengthThreshold` / `capabilityGapThreshold` | Classify concept accuracy as strength / neutral / gap (defaults 70% / 40%) |
+
+**Proficiency** is tracked per `(user, skill, skillRole)` in `CandidateSkillProficiency` — not a single global profile field. Updated automatically on pass (unless manually overridden).
+
+**Concepts** are optional tags per skill on questions (`Concept` + `QuestionConcept`). Capability reports roll up attempt results by concept into strengths and gaps (`CapabilityReport` per attempt).
 
 ---
 
@@ -234,7 +241,7 @@ count(skillId, topicId IN topicIds, skillRoleId, difficulty=hard,   published) >
 - Monorepo: `client`, `server`, `packages/shared` (Zod enums/schemas)
 - Auth: OIDC (IBM App ID) + dev login; RBAC: admin, capability_manager, candidate
 - **IBM App ID integration:** Cloud Directory user list/search/create/bulk import; App ID role display; OIDC role mapping; management API (`APPID_*` env)
-- **Staff profile UI:** Admin **Users → Profile** and Manager **Candidates → detail** — full staffing edit, remarks, proficiency override, audit log (`ManageCandidateProfile`)
+- **Staff profile UI:** Admin **Users → Profile** and Manager **Candidates → detail** — full staffing edit, remarks, per skill+role proficiency override, audit log (`ManageCandidateProfile`)
 - CRUD: categories, skills, topics, questions (draft/publish), users, profile field definitions
 - **Skill roles**: `SkillRole` model, CRUD under each skill, Option B junction (`QuestionSkillRole`)
 - **Named blueprints**: `AssessmentBlueprint` CRUD — Name + Skill + Topic(s) + Skill Role + Difficulty Mix + Pass Mark + Timer + cert settings
@@ -490,7 +497,9 @@ flowchart LR
 | GET/PATCH | `/api/profile/:userId` | Profile view/edit (admin, manager, self) |
 | GET | `/api/manager/candidates/:userId` | Manager candidate summary (legacy; profile API preferred) |
 | POST | `/api/manager/candidates/:userId/remarks` | Add remark (admin may call via manager routes) |
-| POST | `/api/manager/candidates/:userId/proficiency` | Override proficiency |
+| POST | `/api/manager/candidates/:userId/proficiency` | Override proficiency for a skill + skill role (`skillId`, `skillRoleId` in body) |
+| GET | `/api/capability-reports/attempt/:attemptId` | Capability report JSON |
+| GET | `/api/capability-reports/attempt/:attemptId/pdf` | Capability report PDF |
 
 ### Environment variables (auth & App ID)
 

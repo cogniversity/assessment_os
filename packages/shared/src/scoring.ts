@@ -9,7 +9,7 @@ export function normalizeSelectedIndices(value: number | number[] | null | undef
   return [...new Set(arr)].sort((a, b) => a - b);
 }
 
-export interface QuestionScoreResult {
+interface QuestionScoreResult {
   points: number;
   maxPoints: number;
   isFullyCorrect: boolean;
@@ -47,7 +47,7 @@ export function scoreQuestion(
   return { points, maxPoints, isFullyCorrect: points >= 1 };
 }
 
-export interface AttemptQuestionResult {
+interface AttemptQuestionResult {
   questionId: string;
   selectedIndices: number[];
   points: number;

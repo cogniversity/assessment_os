@@ -1,7 +1,6 @@
 import { computeFte } from "@assessment-os/shared";
 import { prisma } from "../db.js";
 import { logProfileChange } from "./auditService.js";
-import type { Proficiency } from "@prisma/client";
 
 export async function ensureProfile(userId: string) {
   let profile = await prisma.candidateProfile.findUnique({ where: { userId } });
@@ -88,31 +87,5 @@ export async function updateProfile(
   return prisma.candidateProfile.update({
     where: { userId },
     data: updates as Parameters<typeof prisma.candidateProfile.update>[0]["data"],
-  });
-}
-
-export async function overrideProficiency(
-  userId: string,
-  actorId: string,
-  proficiency: Proficiency,
-  changeReason: string
-) {
-  const profile = await ensureProfile(userId);
-  await logProfileChange({
-    candidateUserId: userId,
-    actorUserId: actorId,
-    fieldName: "currentProficiency",
-    oldValue: profile.currentProficiency,
-    newValue: proficiency,
-    changeReason,
-  });
-  return prisma.candidateProfile.update({
-    where: { userId },
-    data: {
-      currentProficiency: proficiency,
-      proficiencyOverridden: true,
-      proficiencyUpdatedById: actorId,
-      proficiencyUpdatedAt: new Date(),
-    },
   });
 }

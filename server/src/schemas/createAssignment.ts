@@ -13,6 +13,10 @@ const certPassFields = {
     .default(MultiSelectScoringMode.ALL_OR_NOTHING),
   proctoringPhotoIntervalMinutes: z.number().int().min(0).default(5),
   proctoringInstructions: z.string().optional().nullable(),
+  issueCapabilityReport: z.boolean().default(false),
+  shareCapabilityWithCandidate: z.boolean().default(false),
+  capabilityStrengthThreshold: z.number().int().min(0).max(100).default(70),
+  capabilityGapThreshold: z.number().int().min(0).max(100).default(40),
 };
 
 /** Validated on the server route — supports App ID–only rows via provisionCandidates. */

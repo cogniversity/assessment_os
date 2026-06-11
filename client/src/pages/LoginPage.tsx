@@ -125,7 +125,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={oidcLogin}
-                  disabled={redirecting || nothingConfigured}
+                  disabled={redirecting || !!nothingConfigured}
                   className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-medium py-4 text-sm transition-colors"
                 >
                   {redirecting ? (

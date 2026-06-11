@@ -15,6 +15,7 @@ import { adminRouter } from "./routes/admin/index.js";
 import { managerRouter } from "./routes/manager/index.js";
 import { profileRouter } from "./routes/profile.js";
 import { certificatesRouter } from "./routes/certificates.js";
+import { capabilityReportsRouter } from "./routes/capabilityReports.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { photosRouter } from "./routes/photos.js";
 import { questionImportTemplateRouter } from "./routes/questionImportTemplate.js";
@@ -70,6 +71,7 @@ async function main() {
   app.use(`${api}/manager`, managerRouter);
   app.use(`${api}/profile`, profileRouter);
   app.use(`${api}/certificates`, certificatesRouter);
+  app.use(`${api}/capability-reports`, capabilityReportsRouter);
   app.use(`${api}/analytics`, analyticsRouter);
   app.use(`${api}/photos`, photosRouter);
   app.use(`${api}/question-import`, questionImportTemplateRouter);

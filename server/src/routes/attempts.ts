@@ -5,6 +5,8 @@ import { Role, ProctoringEventType } from "@assessment-os/shared";
 import { scoreAttempt } from "../services/scoring.js";
 import { uniqueQuestionOrder } from "../services/questionSelector.js";
 import { issueCertificateIfEligible } from "../services/certificateService.js";
+import { issueCapabilityReportIfEligible } from "../services/capabilityReportService.js";
+import { upsertSkillProficiencyFromAttempt } from "../services/skillProficiencyService.js";
 import { AttemptStatus, AssessmentStatus } from "@prisma/client";
 
 const VALID_PROCTOR_EVENTS = new Set(Object.values(ProctoringEventType));
@@ -27,6 +29,7 @@ attemptsRouter.get("/:id", async (req, res, next) => {
         proctoringEvents: true,
         photos: true,
         certificate: true,
+        capabilityReport: true,
       },
     });
     if (!attempt) {
@@ -168,7 +171,11 @@ attemptsRouter.post("/:id/submit", async (req, res, next) => {
       });
     });
 
-    if (passed) await issueCertificateIfEligible(attempt.id);
+    if (passed) {
+      await issueCertificateIfEligible(attempt.id);
+      await upsertSkillProficiencyFromAttempt(attempt.id);
+    }
+    await issueCapabilityReportIfEligible(attempt.id);
 
     const updated = await prisma.assessmentAttempt.findUnique({
       where: { id: attempt.id },

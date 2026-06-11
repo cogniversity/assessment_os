@@ -9,6 +9,7 @@ import { profileUpdateSchema } from "@assessment-os/shared";
 import { updateProfile, ensureProfile } from "../services/profileService.js";
 import { resumePath, externalCertPath } from "../services/storage.js";
 import { Role } from "@assessment-os/shared";
+import { listSkillProficienciesForUser } from "../services/skillProficiencyService.js";
 
 export const profileRouter = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -28,7 +29,7 @@ profileRouter.get("/me", async (req, res) => {
           skill: true,
           skillRole: true,
           topics: { include: { topic: true } },
-          attempts: { include: { certificate: true } },
+          attempts: { include: { certificate: true, capabilityReport: true } },
         },
       },
     },
@@ -46,7 +47,33 @@ profileRouter.get("/me", async (req, res) => {
       },
     },
   });
-  res.json({ user: full, fieldDefs, remarks, platformCertificates: certs });
+  const capabilityReports = await prisma.capabilityReport.findMany({
+    where: {
+      attempt: {
+        assessment: {
+          userId: user.id,
+          shareCapabilityWithCandidate: true,
+        },
+      },
+    },
+    include: {
+      attempt: {
+        include: {
+          assessment: { include: { skill: true, skillRole: true, topics: { include: { topic: true } } } },
+        },
+      },
+    },
+    orderBy: { issuedAt: "desc" },
+  });
+  const skillProficiencies = await listSkillProficienciesForUser(user.id);
+  res.json({
+    user: full,
+    fieldDefs,
+    remarks,
+    platformCertificates: certs,
+    capabilityReports,
+    skillProficiencies,
+  });
 });
 
 profileRouter.get("/:userId", async (req, res) => {
@@ -89,7 +116,8 @@ profileRouter.get("/:userId", async (req, res) => {
     take: 50,
     include: { actor: { select: { name: true } } },
   });
-  res.json({ ...user, remarksReceived: remarks, auditLog: audit });
+  const skillProficiencies = await listSkillProficienciesForUser(targetId);
+  res.json({ ...user, remarksReceived: remarks, auditLog: audit, skillProficiencies });
 });
 
 profileRouter.patch("/:userId", async (req, res, next) => {

@@ -24,15 +24,18 @@ export type ExportBundleData = {
   profileFieldDefinitions: Record<string, unknown>[];
   users: Record<string, unknown>[];
   candidateProfiles: Record<string, unknown>[];
+  candidateSkillProficiencies: Record<string, unknown>[];
   externalCertificates: Record<string, unknown>[];
   candidateRemarks: Record<string, unknown>[];
   profileAuditLogs: Record<string, unknown>[];
   categories: Record<string, unknown>[];
   skills: Record<string, unknown>[];
   skillRoles: Record<string, unknown>[];
+  concepts: Record<string, unknown>[];
   topics: Record<string, unknown>[];
   questions: Record<string, unknown>[];
   questionSkillRoles: Record<string, unknown>[];
+  questionConcepts: Record<string, unknown>[];
   blueprints: Record<string, unknown>[];
   blueprintTopics: Record<string, unknown>[];
   assessments: Record<string, unknown>[];
@@ -43,6 +46,7 @@ export type ExportBundleData = {
   attemptPhotos: Record<string, unknown>[];
   proctoringEvents: Record<string, unknown>[];
   certificates: Record<string, unknown>[];
+  capabilityReports: Record<string, unknown>[];
 };
 
 export type SectionCounts = Partial<Record<keyof ExportBundleData, number>>;

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import PDFDocument from "pdfkit";
 import fs from "fs";
+import { PROFICIENCY_LEVELS } from "@assessment-os/shared";
 import { requireAuth } from "../middleware/auth.js";
 import { prisma } from "../db.js";
 import { config } from "../config.js";
@@ -48,6 +49,83 @@ function formatDate(d: Date): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 
+const DEFAULT_THRESHOLDS = [40, 55, 70, 85, 95];
+
+const METER_SEGMENT_COLORS = ["#E2E8F0", "#CBD5E1", "#94A3B8", "#64748B", "#475569", "#1E3A5F"];
+
+const METER_SHORT_LABELS: Record<string, string> = {
+  entry: "Entry",
+  beginner: "Beginner",
+  advanced_beginner: "Adv. Beg.",
+  competent: "Competent",
+  proficient: "Proficient",
+  expert: "Expert",
+};
+
+function normalizeThresholds(raw: unknown): number[] {
+  if (!Array.isArray(raw) || raw.length < 5) return DEFAULT_THRESHOLDS;
+  return raw.slice(0, 5).map((v) => Number(v));
+}
+
+/** Horizontal proficiency scale: band widths from thresholds, tick marks, candidate score marker. */
+function drawProficiencyMeter(
+  doc: InstanceType<typeof PDFDocument>,
+  opts: {
+    x: number;
+    y: number;
+    width: number;
+    proficiency: string;
+    score: number | null;
+    thresholds: number[];
+    colors: { navy: string; gold: string; silver: string };
+  }
+) {
+  const { x, y, width, proficiency, score, thresholds, colors } = opts;
+  const barH = 18;
+  const bounds = [0, ...thresholds, 100];
+  const levelIndex = PROFICIENCY_LEVELS.indexOf(proficiency as (typeof PROFICIENCY_LEVELS)[number]);
+
+  doc.fillColor(colors.silver).fontSize(8).font("Helvetica")
+    .text("Proficiency scale", x, y, { width, align: "center" });
+
+  const barY = y + 14;
+  for (let i = 0; i < 6; i++) {
+    const startPct = bounds[i] / 100;
+    const endPct = bounds[i + 1] / 100;
+    const segX = x + startPct * width;
+    const segW = Math.max(1, (endPct - startPct) * width);
+    doc.rect(segX, barY, segW, barH).fillColor(METER_SEGMENT_COLORS[i] ?? colors.navy).fill();
+    if (i === levelIndex) {
+      doc.rect(segX, barY, segW, barH).lineWidth(1.5).strokeColor(colors.gold).stroke();
+    }
+    const label = METER_SHORT_LABELS[PROFICIENCY_LEVELS[i]] ?? PROFICIENCY_LEVELS[i];
+    doc.fillColor(i >= 3 ? "#FFFFFF" : colors.navy).fontSize(6.5).font("Helvetica-Bold")
+      .text(label, segX, barY + 5, { width: segW, align: "center" });
+  }
+
+  for (const t of thresholds) {
+    const tx = x + (t / 100) * width;
+    doc.moveTo(tx, barY).lineTo(tx, barY + barH + 3).lineWidth(0.5).strokeColor(colors.silver).stroke();
+    doc.fillColor(colors.silver).fontSize(6).font("Helvetica")
+      .text(`${t}%`, tx - 12, barY + barH + 5, { width: 24, align: "center" });
+  }
+
+  if (score != null) {
+    const clamped = Math.min(100, Math.max(0, score));
+    const mx = x + (clamped / 100) * width;
+    doc.moveTo(mx, barY - 2)
+      .lineTo(mx - 5, barY - 10)
+      .lineTo(mx + 5, barY - 10)
+      .closePath()
+      .fillColor(colors.gold)
+      .fill();
+    doc.fillColor(colors.navy).fontSize(7).font("Helvetica-Bold")
+      .text(`${clamped}%`, mx - 14, barY - 22, { width: 28, align: "center" });
+  }
+
+  return barY + barH + 18;
+}
+
 function buildCertificatePdf(
   doc: InstanceType<typeof PDFDocument>,
   opts: {
@@ -57,6 +135,8 @@ function buildCertificatePdf(
     issuedAt: Date;
     expiresAt: Date | null;
     proficiency: string | null;
+    score: number | null;
+    proficiencyThresholds: number[];
     showProficiency: boolean;
     verifyUrl: string;
     orgName: string;
@@ -156,20 +236,11 @@ function buildCertificatePdf(
   const bodyBottom = H - borderInner - footerH - 8;
   const bodyHeight = bodyBottom - bodyTop;
 
-  // Measure block height:
-  //   label(12) + gap(14) + name(38) + gap(8) + rule + gap(8)
-  //   + subtext(12) + gap(10) + assessment(18) + gap(12) + badge(26) + gap(18) + date(12)
-  const blockH = 12 + 14 + 38 + 8 + 2 + 8 + 12 + 10 + 18 + 12 + (opts.showProficiency && opts.proficiency ? 26 + 12 : 0) + 18 + 12;
-  const nameY = bodyTop + (bodyHeight - blockH) / 2;
-  doc
-    .fillColor(NAVY)
-    .fontSize(11)
-    .font("Helvetica")
-    .text("This certificate is awarded to", 0, nameY, { align: "center" });
+  const showProf = opts.showProficiency && !!opts.proficiency;
+  const profBlockH = showProf ? 26 + 12 + 52 : 0;
+  const blockH = 12 + 14 + 38 + 8 + 2 + 8 + 12 + 10 + 18 + 12 + profBlockH + 18 + 12;
+  let cy = bodyTop + (bodyHeight - blockH) / 2;
 
-  let cy = nameY;
-
-  // "This certificate is awarded to"
   doc.fillColor(SILVER).fontSize(11).font("Helvetica")
     .text("This certificate is awarded to", 0, cy, { align: "center" });
   cy += 26;
@@ -202,16 +273,32 @@ function buildCertificatePdf(
     });
   cy += 26;
 
-  // Proficiency badge
-  if (opts.showProficiency && opts.proficiency) {
-    const profText = `Proficiency: ${proficiencyLabel(opts.proficiency)}`;
-    const badgeW = 220;
+  if (showProf) {
+    const profLabel = proficiencyLabel(opts.proficiency!);
+    const profText =
+      opts.score != null
+        ? `Proficiency: ${profLabel} (${opts.score}%)`
+        : `Proficiency: ${profLabel}`;
+    const badgeW = 280;
     const badgeH = 26;
     const badgeX = (W - badgeW) / 2;
     doc.roundedRect(badgeX, cy, badgeW, badgeH, 5).fillColor(NAVY).fill();
     doc.fillColor(GOLD).fontSize(10).font("Helvetica-Bold")
       .text(profText, badgeX, cy + 7, { width: badgeW, align: "center" });
-    cy += badgeH + 14;
+    cy += badgeH + 10;
+
+    const meterW = Math.min(420, W - (borderInner + 60) * 2);
+    const meterX = (W - meterW) / 2;
+    cy = drawProficiencyMeter(doc, {
+      x: meterX,
+      y: cy,
+      width: meterW,
+      proficiency: opts.proficiency!,
+      score: opts.score,
+      thresholds: opts.proficiencyThresholds,
+      colors: { navy: NAVY, gold: GOLD, silver: SILVER },
+    });
+    cy += 8;
   }
 
   // Date(s) — centred, or split if both issued + expiry
@@ -269,7 +356,14 @@ certificatesRouter.get("/:certNumber", async (req, res) => {
     return;
   }
   const expired = cert.expiresAt && new Date() > cert.expiresAt;
-  res.json({ ...cert, expired: !!expired });
+  const assessment = cert.attempt.assessment;
+  res.json({
+    ...cert,
+    expired: !!expired,
+    score: cert.attempt.score,
+    proficiencyThresholds: normalizeThresholds(assessment.proficiencyThresholds),
+    assessmentLabel: assessmentLabel(assessment),
+  });
 });
 
 certificatesRouter.get("/:certNumber/pdf", async (req, res) => {
@@ -311,6 +405,8 @@ certificatesRouter.get("/:certNumber/pdf", async (req, res) => {
     issuedAt: cert.issuedAt,
     expiresAt: cert.expiresAt,
     proficiency: cert.proficiency,
+    score: cert.attempt.score,
+    proficiencyThresholds: normalizeThresholds(assessment.proficiencyThresholds),
     showProficiency: assessment.showProficiencyOnCert,
     verifyUrl: `${config.serverBaseUrl}/api/certificates/${cert.certNumber}`,
     orgName: config.orgName,

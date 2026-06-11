@@ -101,12 +101,13 @@ model User {
   auditLogsActed       ProfileAuditLog[]     @relation("AuditActor")
   auditLogsReceived    ProfileAuditLog[]     @relation("AuditCandidate")
   externalCertificates ExternalCertificate[]
-  proficiencyUpdates   CandidateProfile[]    @relation("ProficiencyUpdater")
   createdBlueprints    AssessmentBlueprint[] @relation("BlueprintCreatedBy")
   reattemptRequests    ReattemptRequest[]    @relation("ReattemptCandidate")
   reattemptReviews     ReattemptRequest[]    @relation("ReattemptReviewer")
-  managedSkills        ManagerSkill[]        @relation("ManagerSkills")
-  managedQuestionBanks ManagerQuestionBank[] @relation("ManagerQuestionBanks")
+  managedSkills            ManagerSkill[]              @relation("ManagerSkills")
+  managedQuestionBanks     ManagerQuestionBank[]       @relation("ManagerQuestionBanks")
+  skillProficiencies       CandidateSkillProficiency[] @relation("CandidateSkillProficiencies")
+  skillProficiencyUpdates  CandidateSkillProficiency[] @relation("SkillProficiencyUpdater")
 }
 
 model Category {
@@ -129,8 +130,10 @@ model Skill {
   questions   Question[]
   assessments Assessment[]
   blueprints  AssessmentBlueprint[]
-  managers           ManagerSkill[]
+  managers             ManagerSkill[]
   managerQuestionBanks ManagerQuestionBank[]
+  concepts             Concept[]
+  skillProficiencies   CandidateSkillProficiency[]
 }
 
 // Roles defined per skill — not to be confused with User.role (RBAC)
@@ -151,6 +154,7 @@ model SkillRole {
   questionRoles      QuestionSkillRole[]
   blueprints         AssessmentBlueprint[]
   assessments        Assessment[]
+  skillProficiencies CandidateSkillProficiency[]
 
   @@unique([skillId, code])
   @@index([skillId, isActive])
@@ -194,6 +198,7 @@ model Question {
   topic          Topic          @relation(fields: [topicId], references: [id])
   skill          Skill          @relation(fields: [skillId], references: [id])
   skillRoles     QuestionSkillRole[]
+  concepts       QuestionConcept[]
   attemptAnswers AttemptAnswer[]
 
   @@index([skillId, topicId, status])
@@ -209,6 +214,33 @@ model QuestionSkillRole {
 
   @@id([questionId, skillRoleId])
   @@index([skillRoleId])
+}
+
+model Concept {
+  id          String   @id @default(uuid())
+  skillId     String
+  code        String
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  skill       Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  questions   QuestionConcept[]
+
+  @@unique([skillId, code])
+  @@index([skillId, isActive])
+}
+
+model QuestionConcept {
+  questionId String
+  conceptId  String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  concept    Concept  @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, conceptId])
+  @@index([conceptId])
 }
 
 // Named reusable blueprint: Name + Skill + Topic(s) + Skill Role + Difficulty Mix + Pass mark + Timer
@@ -234,6 +266,10 @@ model AssessmentBlueprint {
   multiSelectScoringMode       MultiSelectScoringMode @default(all_or_nothing)
   proctoringPhotoIntervalMinutes Int    @default(5)
   proctoringInstructions       String?
+  issueCapabilityReport          Boolean @default(false)
+  shareCapabilityWithCandidate   Boolean @default(false)
+  capabilityStrengthThreshold    Int     @default(70)
+  capabilityGapThreshold         Int     @default(40)
   createdById      String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -280,6 +316,10 @@ model Assessment {
   multiSelectScoringMode         MultiSelectScoringMode @default(all_or_nothing)
   proctoringPhotoIntervalMinutes Int     @default(5)
   proctoringInstructions         String?
+  issueCapabilityReport          Boolean @default(false)
+  shareCapabilityWithCandidate   Boolean @default(false)
+  capabilityStrengthThreshold    Int     @default(70)
+  capabilityGapThreshold         Int     @default(40)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   user             User             @relation("CandidateAssessments", fields: [userId], references: [id])
@@ -338,7 +378,8 @@ model AssessmentAttempt {
   answers         AttemptAnswer[]
   photos          AttemptPhoto[]
   proctoringEvents ProctoringEvent[]
-  certificate     Certificate?
+  certificate      Certificate?
+  capabilityReport CapabilityReport?
 }
 
 model AttemptAnswer {
@@ -380,6 +421,37 @@ model Certificate {
   attempt     AssessmentAttempt @relation(fields: [attemptId], references: [id])
 }
 
+model CapabilityReport {
+  id           String            @id @default(uuid())
+  attemptId    String            @unique
+  reportNumber String            @unique
+  issuedAt     DateTime          @default(now())
+  summary      Json
+  concepts     Json
+  attempt      AssessmentAttempt @relation(fields: [attemptId], references: [id])
+}
+
+model CandidateSkillProficiency {
+  id                    String       @id @default(uuid())
+  userId                String
+  skillId               String
+  skillRoleId           String
+  proficiency           Proficiency?
+  sourceAttemptId       String?
+  proficiencyOverridden Boolean      @default(false)
+  updatedById           String?
+  updatedAt             DateTime?
+  createdAt             DateTime     @default(now())
+  user                  User         @relation("CandidateSkillProficiencies", fields: [userId], references: [id], onDelete: Cascade)
+  skill                 Skill        @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  skillRole             SkillRole    @relation(fields: [skillRoleId], references: [id], onDelete: Cascade)
+  updatedBy             User?        @relation("SkillProficiencyUpdater", fields: [updatedById], references: [id])
+
+  @@unique([userId, skillId, skillRoleId])
+  @@index([userId])
+  @@index([skillId])
+}
+
 model CandidateProfile {
   id                    String      @id @default(uuid())
   userId                String      @unique
@@ -404,14 +476,9 @@ model CandidateProfile {
   status                String?
   customFields          Json        @default("{}")
   resumeFilePath        String?
-  currentProficiency    Proficiency?
-  proficiencyOverridden Boolean     @default(false)
-  proficiencyUpdatedById String?
-  proficiencyUpdatedAt  DateTime?
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
   user                  User        @relation(fields: [userId], references: [id])
-  proficiencyUpdatedBy  User?       @relation("ProficiencyUpdater", fields: [proficiencyUpdatedById], references: [id])
 }
 
 model ExternalCertificate {

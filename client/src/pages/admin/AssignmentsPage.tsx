@@ -26,6 +26,10 @@ interface Blueprint {
   proficiencyThresholds: number[];
   proctoringPhotoIntervalMinutes: number;
   proctoringInstructions?: string | null;
+  issueCapabilityReport: boolean;
+  shareCapabilityWithCandidate: boolean;
+  capabilityStrengthThreshold: number;
+  capabilityGapThreshold: number;
   topics: { topicId: string }[];
   skill: { id: string; name: string; code: string };
   skillRole: { id: string; name: string; code: string };
@@ -132,6 +136,10 @@ export default function AssignmentsPage() {
     displayName: "",
     proctoringPhotoIntervalMinutes: "5",
     proctoringInstructions: "",
+    issueCapabilityReport: false,
+    shareCapabilityWithCandidate: false,
+    capabilityStrengthThreshold: 70,
+    capabilityGapThreshold: 40,
   });
 
   const skillRoles = useQuery({
@@ -202,6 +210,10 @@ export default function AssignmentsPage() {
       proficiencyThresholds: Array.isArray(bp.proficiencyThresholds) ? bp.proficiencyThresholds : [40, 55, 70, 85, 95],
       proctoringPhotoIntervalMinutes: String(bp.proctoringPhotoIntervalMinutes ?? 5),
       proctoringInstructions: bp.proctoringInstructions ?? "",
+      issueCapabilityReport: bp.issueCapabilityReport ?? false,
+      shareCapabilityWithCandidate: bp.shareCapabilityWithCandidate ?? false,
+      capabilityStrengthThreshold: bp.capabilityStrengthThreshold ?? 70,
+      capabilityGapThreshold: bp.capabilityGapThreshold ?? 40,
       displayName: bp.name,
     }));
   };
@@ -242,6 +254,10 @@ export default function AssignmentsPage() {
           proficiencyThresholds: form.proficiencyThresholds,
           proctoringPhotoIntervalMinutes: parseInt(form.proctoringPhotoIntervalMinutes, 10) || 5,
           proctoringInstructions: form.proctoringInstructions || null,
+          issueCapabilityReport: form.issueCapabilityReport,
+          shareCapabilityWithCandidate: form.shareCapabilityWithCandidate,
+          capabilityStrengthThreshold: form.capabilityStrengthThreshold,
+          capabilityGapThreshold: form.capabilityGapThreshold,
         },
       });
     },
@@ -704,6 +720,37 @@ export default function AssignmentsPage() {
               )}
               {!form.issueCertificate && (
                 <InfoBox>Enable certificate issuance above to configure certificate options.</InfoBox>
+              )}
+            </div>
+          </Card>
+
+          <Card title="Capability report">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="capReport"
+                  checked={form.issueCapabilityReport}
+                  onChange={(e) => setForm({ ...form, issueCapabilityReport: e.target.checked })}
+                  className="accent-indigo-600"
+                />
+                <label htmlFor="capReport" className="text-sm font-medium text-slate-700 cursor-pointer">
+                  Issue capability report on completion
+                </label>
+              </div>
+              {form.issueCapabilityReport && (
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <input
+                    type="checkbox"
+                    id="shareCap"
+                    checked={form.shareCapabilityWithCandidate}
+                    onChange={(e) => setForm({ ...form, shareCapabilityWithCandidate: e.target.checked })}
+                    className="accent-indigo-600"
+                  />
+                  <label htmlFor="shareCap" className="text-sm text-slate-700 cursor-pointer">
+                    Share capability report with candidate
+                  </label>
+                </div>
               )}
             </div>
           </Card>

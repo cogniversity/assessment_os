@@ -27,6 +27,7 @@ interface AttemptDetail {
   proctoringEvents: { id: string; eventType: string; occurredAt: string }[];
   photos: { id: string; kind: string; capturedAt: string }[];
   certificate?: { certNumber: string; proficiency?: string } | null;
+  capabilityReport?: { reportNumber: string; concepts: unknown[] } | null;
 }
 
 export default function AttemptDetailPage() {
@@ -82,12 +83,22 @@ export default function AttemptDetailPage() {
             {data.assessment.user.email}
           </p>
         </div>
-        <a href={downloadUrl(`/admin/export/attempt/${data.id}/pdf`)} className="shrink-0">
-          <button type="button" className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-4 py-2 rounded-xl text-sm transition-colors">
-            <Download size={15} />
-            Export PDF
-          </button>
-        </a>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <a href={downloadUrl(`/admin/export/attempt/${data.id}/pdf`)}>
+            <button type="button" className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-4 py-2 rounded-xl text-sm transition-colors">
+              <Download size={15} />
+              Attempt PDF
+            </button>
+          </a>
+          {data.capabilityReport && (
+            <a href={downloadUrl(`/capability-reports/attempt/${data.id}/pdf`)}>
+              <button type="button" className="flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-medium px-4 py-2 rounded-xl text-sm transition-colors">
+                <Download size={15} />
+                Capability PDF
+              </button>
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Summary cards */}
@@ -204,6 +215,12 @@ export default function AttemptDetailPage() {
                   Proficiency: {data.certificate.proficiency.replace(/_/g, " ")}
                 </p>
               )}
+            </div>
+          )}
+          {data.capabilityReport && (
+            <div className="border-t border-slate-100 pt-4 mt-4">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Capability report</p>
+              <p className="text-sm font-mono text-emerald-700">{data.capabilityReport.reportNumber}</p>
             </div>
           )}
         </div>

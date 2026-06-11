@@ -61,6 +61,7 @@ export default function QuestionsPage() {
     topicId: "",
     skillId: "",
     skillRoleIds: [] as string[],
+    conceptIds: [] as string[],
     questionType: "single" as "single" | "multi",
     difficulty: "medium",
     stem: "",
@@ -97,6 +98,11 @@ export default function QuestionsPage() {
   const skillRoles = useQuery({
     queryKey: ["skill-roles", form.skillId],
     queryFn: () => api<SkillRole[]>(`/admin/skills/${form.skillId}/roles`),
+    enabled: !!form.skillId,
+  });
+  const skillConcepts = useQuery({
+    queryKey: ["skill-concepts", form.skillId],
+    queryFn: () => api<{ id: string; code: string; name: string }[]>(`/admin/skills/${form.skillId}/concepts`),
     enabled: !!form.skillId,
   });
 
@@ -149,6 +155,7 @@ export default function QuestionsPage() {
           topicId: form.topicId,
           skillId: form.skillId,
           skillRoleIds: form.skillRoleIds,
+          conceptIds: form.conceptIds.length ? form.conceptIds : undefined,
           questionType: form.questionType,
           difficulty: form.difficulty,
           stem: form.stem,
@@ -663,7 +670,7 @@ export default function QuestionsPage() {
             <label className="text-xs text-slate-500 block mb-1">Skill *</label>
             <Select
               value={form.skillId}
-              onChange={(e) => setForm({ ...form, skillId: e.target.value, topicId: "", skillRoleIds: [], correctIndices: [] })}
+              onChange={(e) => setForm({ ...form, skillId: e.target.value, topicId: "", skillRoleIds: [], conceptIds: [], correctIndices: [] })}
               disabled={isManager && !hasGrants}
             >
               <option value="">Select skill</option>
@@ -699,6 +706,23 @@ export default function QuestionsPage() {
               )}
               {skillRoles.data?.map((r) => (
                 <option key={r.id} value={r.id}>{r.code} – {r.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 block mb-1">Concepts <span className="font-normal">(optional)</span></label>
+            <Select
+              multiple
+              className="h-20"
+              value={form.conceptIds}
+              onChange={(e) =>
+                setForm({ ...form, conceptIds: Array.from(e.target.selectedOptions, (o) => o.value) })
+              }
+              disabled={!form.skillId}
+            >
+              {!form.skillId && <option disabled>— select a skill first —</option>}
+              {skillConcepts.data?.map((c) => (
+                <option key={c.id} value={c.id}>{c.code} – {c.name}</option>
               ))}
             </Select>
           </div>

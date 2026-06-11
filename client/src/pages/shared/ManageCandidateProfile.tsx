@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { Card, Button, Input, Select } from "../../components/Layout";
 import { useAuth } from "../../context/AuthContext";
+import { PROFICIENCY_LABELS } from "@assessment-os/shared";
 import { Save } from "lucide-react";
 
 const STAFFING_FIELDS: [string, string][] = [
@@ -20,12 +21,23 @@ const STAFFING_FIELDS: [string, string][] = [
   ["status", "Status"],
 ];
 
+type SkillProficiency = {
+  id: string;
+  proficiency: string | null;
+  proficiencyOverridden: boolean;
+  updatedAt: string | null;
+  skill: { id: string; code: string; name: string };
+  skillRole: { id: string; code: string; name: string };
+};
+
 type ProfilePayload = {
   id: string;
   name: string;
   email: string;
   role: string;
   profile: Record<string, unknown> | null;
+  skillProficiencies?: SkillProficiency[];
+  assessments?: { skillId: string; skillRoleId: string; skill: { name: string }; skillRole: { name: string } }[];
   remarksReceived?: { comment: string; visibility: string; author?: { name: string } }[];
   auditLog?: { fieldName: string; oldValue: string | null; newValue: string | null; changedAt: string; actor?: { name: string } }[];
 };
@@ -35,6 +47,8 @@ type Props = {
   backTo: string;
   backLabel?: string;
 };
+
+const PROFICIENCY_OPTIONS = Object.entries(PROFICIENCY_LABELS);
 
 export default function ManageCandidateProfile({ userId, backTo, backLabel = "Back" }: Props) {
   const { user: actor } = useAuth();
@@ -49,6 +63,8 @@ export default function ManageCandidateProfile({ userId, backTo, backLabel = "Ba
 
   const [form, setForm] = useState<Record<string, string>>({});
   const [remark, setRemark] = useState("");
+  const [skillId, setSkillId] = useState("");
+  const [skillRoleId, setSkillRoleId] = useState("");
   const [proficiency, setProficiency] = useState("competent");
   const [reason, setReason] = useState("");
 
@@ -73,7 +89,7 @@ export default function ManageCandidateProfile({ userId, backTo, backLabel = "Ba
     mutationFn: () =>
       api(`/manager/candidates/${userId}/proficiency`, {
         method: "POST",
-        json: { proficiency, changeReason: reason },
+        json: { skillId, skillRoleId, proficiency, changeReason: reason },
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["profile", userId] }),
   });
@@ -81,6 +97,15 @@ export default function ManageCandidateProfile({ userId, backTo, backLabel = "Ba
   if (isLoading || !data) return <p className="text-sm text-slate-500">Loading profile…</p>;
 
   const p = (data.profile ?? {}) as Record<string, unknown>;
+  const skillProficiencies = data.skillProficiencies ?? [];
+  const assessmentPairs = [
+    ...new Map(
+      (data.assessments ?? []).map((a) => [
+        `${a.skillId}:${a.skillRoleId}`,
+        { skillId: a.skillId, skillRoleId: a.skillRoleId, label: `${a.skill.name} / ${a.skillRole.name}` },
+      ])
+    ).values(),
+  ];
 
   return (
     <div className="space-y-6">
@@ -107,16 +132,9 @@ export default function ManageCandidateProfile({ userId, backTo, backLabel = "Ba
             </div>
           ))}
           <p className="text-xs text-slate-500">FTE (computed): {String(p.fte ?? "—")}</p>
-          <p className="text-xs text-slate-500">
-            Proficiency: {String(p.currentProficiency ?? "—")}
-          </p>
           {canManage && (
             <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
-              <Button
-                variant="primary"
-                onClick={() => save.mutate()}
-                disabled={save.isPending}
-              >
+              <Button variant="primary" onClick={() => save.mutate()} disabled={save.isPending}>
                 <Save size={16} />
                 {save.isPending ? "Saving…" : "Save profile"}
               </Button>
@@ -124,18 +142,75 @@ export default function ManageCandidateProfile({ userId, backTo, backLabel = "Ba
           )}
         </Card>
 
+        <Card title="Skill proficiencies" subtitle="One proficiency band per skill + role.">
+          {skillProficiencies.length === 0 ? (
+            <p className="text-sm text-slate-500">No skill-role proficiencies recorded yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-500 border-b">
+                    <th className="pb-2 pr-3">Skill</th>
+                    <th className="pb-2 pr-3">Role</th>
+                    <th className="pb-2 pr-3">Proficiency</th>
+                    <th className="pb-2">Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {skillProficiencies.map((row) => (
+                    <tr key={row.id} className="border-b border-slate-50">
+                      <td className="py-2 pr-3">{row.skill.name}</td>
+                      <td className="py-2 pr-3">{row.skillRole.name}</td>
+                      <td className="py-2 pr-3">
+                        {row.proficiency
+                          ? PROFICIENCY_LABELS[row.proficiency] ?? row.proficiency
+                          : "—"}
+                      </td>
+                      <td className="py-2 text-xs text-slate-500">
+                        {row.proficiencyOverridden ? "Manual override" : "Assessment"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
         {canManage && data.role === "candidate" && (
           <>
             <Card title="Override proficiency">
+              <Select
+                value={skillId}
+                onChange={(e) => {
+                  setSkillId(e.target.value);
+                  setSkillRoleId("");
+                }}
+                className="mb-2"
+              >
+                <option value="">Select skill…</option>
+                {assessmentPairs.map((pair) => (
+                  <option key={pair.skillId} value={pair.skillId}>
+                    {pair.label.split(" / ")[0]}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                value={skillRoleId}
+                onChange={(e) => setSkillRoleId(e.target.value)}
+                className="mb-2"
+              >
+                <option value="">Select role…</option>
+                {assessmentPairs
+                  .filter((pair) => !skillId || pair.skillId === skillId)
+                  .map((pair) => (
+                    <option key={`${pair.skillId}:${pair.skillRoleId}`} value={pair.skillRoleId}>
+                      {pair.label}
+                    </option>
+                  ))}
+              </Select>
               <Select value={proficiency} onChange={(e) => setProficiency(e.target.value)} className="mb-2">
-                {[
-                  ["entry",             "Entry"],
-                  ["beginner",          "Beginner"],
-                  ["advanced_beginner", "Advanced Beginner"],
-                  ["competent",         "Competent"],
-                  ["proficient",        "Proficient"],
-                  ["expert",            "Expert"],
-                ].map(([val, label]) => (
+                {PROFICIENCY_OPTIONS.map(([val, label]) => (
                   <option key={val} value={val}>{label}</option>
                 ))}
               </Select>
@@ -145,7 +220,10 @@ export default function ManageCandidateProfile({ userId, backTo, backLabel = "Ba
                 onChange={(e) => setReason(e.target.value)}
                 className="mb-2"
               />
-              <Button onClick={() => setProf.mutate()} disabled={!reason || setProf.isPending}>
+              <Button
+                onClick={() => setProf.mutate()}
+                disabled={!reason || !skillId || !skillRoleId || setProf.isPending}
+              >
                 Update proficiency
               </Button>
             </Card>

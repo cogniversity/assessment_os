@@ -5,16 +5,6 @@ export const Role = {
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
-// ExperienceLevel kept for backward compat / reference.
-// Replaced in the data model by per-skill SkillRole (see SkillRole table).
-export const ExperienceLevel = {
-  JUNIOR: "junior",
-  MID: "mid",
-  SENIOR: "senior",
-  LEAD: "lead",
-} as const;
-export type ExperienceLevel = (typeof ExperienceLevel)[keyof typeof ExperienceLevel];
-
 export const Difficulty = {
   EASY: "easy",
   MEDIUM: "medium",
@@ -27,23 +17,6 @@ export const QuestionStatus = {
   PUBLISHED: "published",
 } as const;
 export type QuestionStatus = (typeof QuestionStatus)[keyof typeof QuestionStatus];
-
-export const AssessmentStatus = {
-  ASSIGNED: "assigned",
-  IN_PROGRESS: "in_progress",
-  COMPLETED: "completed",
-  EXPIRED: "expired",
-  ABANDONED: "abandoned",
-} as const;
-export type AssessmentStatus = (typeof AssessmentStatus)[keyof typeof AssessmentStatus];
-
-export const AttemptStatus = {
-  IN_PROGRESS: "in_progress",
-  COMPLETED: "completed",
-  TIMED_OUT: "timed_out",
-  ABANDONED: "abandoned",
-} as const;
-export type AttemptStatus = (typeof AttemptStatus)[keyof typeof AttemptStatus];
 
 export const Proficiency = {
   ENTRY: "entry",
@@ -92,12 +65,6 @@ export const ProctoringEventType = {
 } as const;
 export type ProctoringEventType = (typeof ProctoringEventType)[keyof typeof ProctoringEventType];
 
-export const PhotoKind = {
-  START: "start",
-  PERIODIC: "periodic",
-} as const;
-export type PhotoKind = (typeof PhotoKind)[keyof typeof PhotoKind];
-
 export const QuestionType = {
   SINGLE: "single",
   MULTI: "multi",
@@ -110,12 +77,3 @@ export const MultiSelectScoringMode = {
   PARTIAL_CREDIT: "partial_credit",
 } as const;
 export type MultiSelectScoringMode = (typeof MultiSelectScoringMode)[keyof typeof MultiSelectScoringMode];
-
-export const ReattemptRequestStatus = {
-  PENDING: "pending",
-  APPROVED: "approved",
-  REJECTED: "rejected",
-} as const;
-export type ReattemptRequestStatus = (typeof ReattemptRequestStatus)[keyof typeof ReattemptRequestStatus];
-
-export const PROFILE_FIELD_TYPES = ["text", "number", "date", "select", "textarea"] as const;

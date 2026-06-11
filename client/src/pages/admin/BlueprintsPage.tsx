@@ -32,6 +32,10 @@ interface Blueprint {
   proficiencyThresholds: number[];
   proctoringPhotoIntervalMinutes: number;
   proctoringInstructions?: string | null;
+  issueCapabilityReport: boolean;
+  shareCapabilityWithCandidate: boolean;
+  capabilityStrengthThreshold: number;
+  capabilityGapThreshold: number;
   skill: { id: string; code: string; name: string };
   skillRole: { id: string; code: string; name: string };
   topics: { topicId: string; topic: { id: string; name: string; category: { name: string } } }[];
@@ -68,6 +72,10 @@ const emptyForm = {
   proctoringPhotoIntervalMinutes: "5",
   proctoringInstructions: "",
   proficiencyThresholds: DEFAULT_THRESHOLDS.map(String),
+  issueCapabilityReport: false,
+  shareCapabilityWithCandidate: false,
+  capabilityStrengthThreshold: "70",
+  capabilityGapThreshold: "40",
 };
 
 function FieldLabel({ label, required }: { label: string; required?: boolean }) {
@@ -150,6 +158,10 @@ export default function BlueprintsPage() {
       proctoringPhotoIntervalMinutes: String(bp.proctoringPhotoIntervalMinutes ?? 5),
       proctoringInstructions: bp.proctoringInstructions ?? "",
       proficiencyThresholds: thresholds,
+      issueCapabilityReport: bp.issueCapabilityReport ?? false,
+      shareCapabilityWithCandidate: bp.shareCapabilityWithCandidate ?? false,
+      capabilityStrengthThreshold: String(bp.capabilityStrengthThreshold ?? 70),
+      capabilityGapThreshold: String(bp.capabilityGapThreshold ?? 40),
     });
     setEditing(bp.id);
   }
@@ -181,6 +193,10 @@ export default function BlueprintsPage() {
       const n = parseInt(v, 10);
       return Number.isFinite(n) ? Math.min(Math.max(n, 0), 100) : DEFAULT_THRESHOLDS[i];
     }),
+    issueCapabilityReport: form.issueCapabilityReport,
+    shareCapabilityWithCandidate: form.shareCapabilityWithCandidate,
+    capabilityStrengthThreshold: parseInt(form.capabilityStrengthThreshold, 10) || 70,
+    capabilityGapThreshold: parseInt(form.capabilityGapThreshold, 10) || 40,
   });
 
   const createMutation = useMutation({
@@ -547,6 +563,51 @@ export default function BlueprintsPage() {
                         onChange={(e) => setForm((f) => ({ ...f, certValidityDays: e.target.value }))}
                         placeholder="0 = no expiry"
                       />
+                    </div>
+                  </div>
+                )}
+
+                <label className="flex items-center gap-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100">
+                  <input
+                    type="checkbox"
+                    checked={form.issueCapabilityReport}
+                    onChange={(e) => setForm((f) => ({ ...f, issueCapabilityReport: e.target.checked }))}
+                    className="accent-indigo-600"
+                  />
+                  <span className="text-sm text-slate-700">Issue capability report on completion</span>
+                </label>
+                {form.issueCapabilityReport && (
+                  <div className="space-y-3 pl-3 border-l-2 border-emerald-200">
+                    <label className="flex items-center gap-3 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-100">
+                      <input
+                        type="checkbox"
+                        checked={form.shareCapabilityWithCandidate}
+                        onChange={(e) => setForm((f) => ({ ...f, shareCapabilityWithCandidate: e.target.checked }))}
+                        className="accent-indigo-600"
+                      />
+                      <span className="text-sm text-slate-700">Share capability report with candidate</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <FieldLabel label="Strength threshold (%)" />
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={form.capabilityStrengthThreshold}
+                          onChange={(e) => setForm((f) => ({ ...f, capabilityStrengthThreshold: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel label="Gap threshold (%)" />
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={form.capabilityGapThreshold}
+                          onChange={(e) => setForm((f) => ({ ...f, capabilityGapThreshold: e.target.value }))}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}

@@ -125,6 +125,10 @@ assignmentsRouter.post("/", async (req, res, next) => {
             multiSelectScoringMode: rest.multiSelectScoringMode,
             proctoringPhotoIntervalMinutes: rest.proctoringPhotoIntervalMinutes,
             proctoringInstructions: rest.proctoringInstructions ?? null,
+            issueCapabilityReport: rest.issueCapabilityReport,
+            shareCapabilityWithCandidate: rest.shareCapabilityWithCandidate,
+            capabilityStrengthThreshold: rest.capabilityStrengthThreshold,
+            capabilityGapThreshold: rest.capabilityGapThreshold,
             topics: { create: topicIds.map((topicId) => ({ topicId })) },
           },
           include: {

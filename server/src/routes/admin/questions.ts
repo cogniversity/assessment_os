@@ -20,7 +20,16 @@ const includeRoles = {
   topic: { include: { category: true } },
   skill: true,
   skillRoles: { include: { skillRole: true } },
+  concepts: { include: { concept: true } },
 } as const;
+
+async function assertConceptIdsForSkill(skillId: string, conceptIds: string[] | undefined) {
+  if (!conceptIds?.length) return;
+  const concepts = await prisma.concept.findMany({ where: { id: { in: conceptIds } } });
+  if (concepts.length !== conceptIds.length || concepts.some((c) => c.skillId !== skillId)) {
+    throw new Error("CONCEPT_SKILL_MISMATCH");
+  }
+}
 
 async function assertQuestionAccess(
   userId: string,
@@ -62,7 +71,7 @@ questionsRouter.get("/", async (req, res) => {
 questionsRouter.post("/", async (req, res, next) => {
   try {
     const user = getUser(req);
-    const { skillRoleIds, ...fields } = questionSchema.parse(req.body);
+    const { skillRoleIds, conceptIds, ...fields } = questionSchema.parse(req.body);
     if (!(await assertQuestionAccess(user.id, user.role, fields.skillId, fields.topicId))) {
       res.status(403).json({ error: "Forbidden" });
       return;
@@ -77,11 +86,20 @@ questionsRouter.post("/", async (req, res, next) => {
       res.status(400).json({ error: "One or more skillRoleIds do not belong to the given skillId" });
       return;
     }
+    try {
+      await assertConceptIdsForSkill(fields.skillId, conceptIds);
+    } catch {
+      res.status(400).json({ error: "One or more conceptIds do not belong to the given skillId" });
+      return;
+    }
     res.status(201).json(
       await prisma.question.create({
         data: {
           ...fields,
           skillRoles: { create: skillRoleIds.map((skillRoleId) => ({ skillRoleId })) },
+          ...(conceptIds?.length
+            ? { concepts: { create: conceptIds.map((conceptId) => ({ conceptId })) } }
+            : {}),
         },
         include: includeRoles,
       })
@@ -190,7 +208,7 @@ questionsRouter.put("/:id", async (req, res, next) => {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    const { skillRoleIds, ...fields } = questionUpdateSchema.parse(req.body);
+    const { skillRoleIds, conceptIds, ...fields } = questionUpdateSchema.parse(req.body);
     const targetSkillId = fields.skillId ?? existing.skillId;
     const targetTopicId = fields.topicId ?? existing.topicId;
     if (!(await assertQuestionAccess(user.id, user.role, targetSkillId, targetTopicId))) {
@@ -207,6 +225,15 @@ questionsRouter.put("/:id", async (req, res, next) => {
       }
     }
 
+    if (conceptIds) {
+      try {
+        await assertConceptIdsForSkill(targetSkillId, conceptIds);
+      } catch {
+        res.status(400).json({ error: "One or more conceptIds do not belong to the question's skill" });
+        return;
+      }
+    }
+
     const roleUpdate = skillRoleIds
       ? {
           skillRoles: {
@@ -216,10 +243,19 @@ questionsRouter.put("/:id", async (req, res, next) => {
         }
       : {};
 
+    const conceptUpdate = conceptIds
+      ? {
+          concepts: {
+            deleteMany: {},
+            create: conceptIds.map((conceptId) => ({ conceptId })),
+          },
+        }
+      : {};
+
     res.json(
       await prisma.question.update({
         where: { id: req.params.id },
-        data: { ...fields, ...roleUpdate } as never,
+        data: { ...fields, ...roleUpdate, ...conceptUpdate } as never,
         include: includeRoles,
       })
     );

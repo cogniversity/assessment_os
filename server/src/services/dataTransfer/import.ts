@@ -200,7 +200,6 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
       inc("candidateProfiles", "skipped");
       continue;
     }
-    const proficiencyUpdatedById = ids.resolve("user", r.proficiencyUpdatedById as string | undefined);
     const created = await prisma.candidateProfile.create({
       data: {
         id: String(r.id),
@@ -226,10 +225,6 @@ async function importUsers(data: Partial<ExportBundleData>, ids: IdMap, selected
         status: r.status != null ? String(r.status) : null,
         customFields: r.customFields ?? {},
         resumeFilePath: r.resumeFilePath != null ? String(r.resumeFilePath) : null,
-        currentProficiency: r.currentProficiency as never,
-        proficiencyOverridden: Boolean(r.proficiencyOverridden),
-        proficiencyUpdatedById,
-        proficiencyUpdatedAt: r.proficiencyUpdatedAt ? new Date(String(r.proficiencyUpdatedAt)) : null,
         ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
@@ -375,6 +370,33 @@ async function importTaxonomy(data: Partial<ExportBundleData>, ids: IdMap, selec
     inc("skillRoles", "imported");
   }
 
+  for (const r of data.concepts ?? []) {
+    const skillId = ids.resolve("skill", String(r.skillId)) ?? String(r.skillId);
+    const code = String(r.code);
+    const existing = await prisma.concept.findUnique({
+      where: { skillId_code: { skillId, code } },
+    });
+    if (existing) {
+      ids.set("concept", String(r.id), existing.id);
+      inc("concepts", "skipped");
+      continue;
+    }
+    const created = await prisma.concept.create({
+      data: {
+        id: String(r.id),
+        skillId,
+        code,
+        name: String(r.name),
+        description: r.description != null ? String(r.description) : null,
+        sortOrder: Number(r.sortOrder ?? 0),
+        isActive: Boolean(r.isActive ?? true),
+        ...optionalDateFields(r, ["createdAt", "updatedAt"]),
+      },
+    });
+    ids.set("concept", String(r.id), created.id);
+    inc("concepts", "imported");
+  }
+
   for (const r of data.topics ?? []) {
     const categoryId = ids.resolve("category", String(r.categoryId)) ?? String(r.categoryId);
     const name = String(r.name);
@@ -446,6 +468,18 @@ async function importQuestions(data: Partial<ExportBundleData>, ids: IdMap, sele
     });
     inc("questionSkillRoles", "imported");
   }
+
+  for (const r of data.questionConcepts ?? []) {
+    const questionId = ids.resolve("question", String(r.questionId));
+    const conceptId = ids.resolve("concept", String(r.conceptId));
+    if (!questionId || !conceptId) continue;
+    await prisma.questionConcept.upsert({
+      where: { questionId_conceptId: { questionId, conceptId } },
+      create: { questionId, conceptId },
+      update: {},
+    });
+    inc("questionConcepts", "imported");
+  }
 }
 
 async function importBlueprints(data: Partial<ExportBundleData>, ids: IdMap, selected: Set<ExportSection>) {
@@ -482,6 +516,10 @@ async function importBlueprints(data: Partial<ExportBundleData>, ids: IdMap, sel
         multiSelectScoringMode: r.multiSelectScoringMode as never,
         proctoringPhotoIntervalMinutes: Number(r.proctoringPhotoIntervalMinutes ?? 5),
         proctoringInstructions: r.proctoringInstructions != null ? String(r.proctoringInstructions) : null,
+        issueCapabilityReport: Boolean(r.issueCapabilityReport ?? false),
+        shareCapabilityWithCandidate: Boolean(r.shareCapabilityWithCandidate ?? false),
+        capabilityStrengthThreshold: Number(r.capabilityStrengthThreshold ?? 70),
+        capabilityGapThreshold: Number(r.capabilityGapThreshold ?? 40),
         createdById,
         ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
@@ -543,6 +581,10 @@ async function importAssignments(data: Partial<ExportBundleData>, ids: IdMap, se
         multiSelectScoringMode: r.multiSelectScoringMode as never,
         proctoringPhotoIntervalMinutes: Number(r.proctoringPhotoIntervalMinutes ?? 5),
         proctoringInstructions: r.proctoringInstructions != null ? String(r.proctoringInstructions) : null,
+        issueCapabilityReport: Boolean(r.issueCapabilityReport ?? false),
+        shareCapabilityWithCandidate: Boolean(r.shareCapabilityWithCandidate ?? false),
+        capabilityStrengthThreshold: Number(r.capabilityStrengthThreshold ?? 70),
+        capabilityGapThreshold: Number(r.capabilityGapThreshold ?? 40),
         ...optionalDateFields(r, ["createdAt", "updatedAt"]),
       },
     });
@@ -701,6 +743,60 @@ async function importResults(data: Partial<ExportBundleData>, ids: IdMap, select
       },
     });
     inc("certificates", "imported");
+  }
+
+  for (const r of data.capabilityReports ?? []) {
+    const attemptId = ids.resolve("attempt", String(r.attemptId));
+    if (!attemptId) continue;
+    const reportNumber = String(r.reportNumber);
+    const existing = await prisma.capabilityReport.findFirst({
+      where: { OR: [{ id: String(r.id) }, { reportNumber }] },
+    });
+    if (existing) {
+      inc("capabilityReports", "skipped");
+      continue;
+    }
+    await prisma.capabilityReport.create({
+      data: {
+        id: String(r.id),
+        attemptId,
+        reportNumber,
+        summary: r.summary as never,
+        concepts: r.concepts as never,
+        issuedAt: new Date(String(r.issuedAt)),
+      },
+    });
+    inc("capabilityReports", "imported");
+  }
+
+  for (const r of data.candidateSkillProficiencies ?? []) {
+    const userId = ids.resolve("user", String(r.userId));
+    const skillId = ids.resolve("skill", String(r.skillId));
+    const skillRoleId = ids.resolve("skillRole", String(r.skillRoleId));
+    if (!userId || !skillId || !skillRoleId) continue;
+    const updatedById = ids.resolve("user", r.updatedById as string | undefined);
+    await prisma.candidateSkillProficiency.upsert({
+      where: { userId_skillId_skillRoleId: { userId, skillId, skillRoleId } },
+      create: {
+        id: String(r.id),
+        userId,
+        skillId,
+        skillRoleId,
+        proficiency: r.proficiency as never,
+        sourceAttemptId: ids.resolve("attempt", r.sourceAttemptId as string | undefined),
+        proficiencyOverridden: Boolean(r.proficiencyOverridden),
+        updatedById,
+        updatedAt: r.updatedAt ? new Date(String(r.updatedAt)) : null,
+        ...optionalDateFields(r, ["createdAt"]),
+      },
+      update: {
+        proficiency: r.proficiency as never,
+        proficiencyOverridden: Boolean(r.proficiencyOverridden),
+        updatedById,
+        updatedAt: r.updatedAt ? new Date(String(r.updatedAt)) : null,
+      },
+    });
+    inc("candidateSkillProficiencies", "imported");
   }
 }
 

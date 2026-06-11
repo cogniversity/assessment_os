@@ -13,6 +13,8 @@ import {
 } from "../services/questionSelector.js";
 import { scoreAttempt } from "../services/scoring.js";
 import { issueCertificateIfEligible } from "../services/certificateService.js";
+import { issueCapabilityReportIfEligible } from "../services/capabilityReportService.js";
+import { upsertSkillProficiencyFromAttempt } from "../services/skillProficiencyService.js";
 import { AttemptStatus, AssessmentStatus } from "@prisma/client";
 
 export const assessmentsRouter = Router();
@@ -84,7 +86,12 @@ async function autoSubmit(attemptId: string) {
     }),
   ]);
 
-  await issueCertificateIfEligible(attemptId);
+  const passed = score >= attempt.assessment.passMark;
+  if (passed) {
+    await issueCertificateIfEligible(attemptId);
+    await upsertSkillProficiencyFromAttempt(attemptId);
+  }
+  await issueCapabilityReportIfEligible(attemptId);
   return prisma.assessmentAttempt.findUnique({
     where: { id: attemptId },
     include: { assessment: true },
@@ -231,6 +238,8 @@ assessmentsRouter.get("/:id/result", async (req, res, next) => {
         passMark: true,
         revealAnswersAfterTest: true,
         issueCertificate: true,
+        issueCapabilityReport: true,
+        shareCapabilityWithCandidate: true,
       },
     });
     if (!assessment || (assessment.userId !== user.id && user.role === "candidate")) {
@@ -262,6 +271,7 @@ assessmentsRouter.get("/:id/result", async (req, res, next) => {
             },
             include: {
               certificate: true,
+              capabilityReport: true,
               assessment: true,
               answers: { include: { question: true } },
             },
@@ -274,6 +284,7 @@ assessmentsRouter.get("/:id/result", async (req, res, next) => {
         },
         include: {
           certificate: true,
+          capabilityReport: true,
           assessment: true,
           answers: { include: { question: true } },
         },
@@ -300,14 +311,24 @@ assessmentsRouter.get("/:id/result", async (req, res, next) => {
     let certificate = detailAttempt.certificate;
     const passed =
       displayScore !== null && displayScore >= assessment.passMark;
-    if (passed && assessment.issueCertificate && !certificate) {
-      certificate = await issueCertificateIfEligible(detailAttempt.id);
+    if (passed) {
+      if (assessment.issueCertificate && !certificate) {
+        certificate = await issueCertificateIfEligible(detailAttempt.id);
+      }
+      await upsertSkillProficiencyFromAttempt(detailAttempt.id);
+    }
+
+    let capabilityReport = detailAttempt.capabilityReport;
+    if (assessment.issueCapabilityReport && !capabilityReport) {
+      capabilityReport = await issueCapabilityReportIfEligible(detailAttempt.id);
     }
 
     res.json({
       passMark: assessment.passMark,
       issueCertificate: assessment.issueCertificate,
-      attempt: { ...detailAttempt, score: displayScore, certificate },
+      issueCapabilityReport: assessment.issueCapabilityReport,
+      shareCapabilityWithCandidate: assessment.shareCapabilityWithCandidate,
+      attempt: { ...detailAttempt, score: displayScore, certificate, capabilityReport },
       attempts: finishedAttempts.map((a, idx) => {
         const score = a.id === detailAttempt.id ? displayScore : a.score;
         return {

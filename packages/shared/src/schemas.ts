@@ -28,6 +28,16 @@ export const skillSchema = z.object({
 export const skillUpdateSchema = skillSchema.partial();
 
 // Skill role — competency band defined per skill (not a global enum)
+export const conceptSchema = z.object({
+  code: z.string().min(1).max(50).regex(/^[A-Z0-9_]+$/, "Code must be uppercase letters, digits, or underscores"),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  sortOrder: z.number().int().default(0),
+  isActive: z.boolean().default(true),
+});
+
+export const conceptUpdateSchema = conceptSchema.partial();
+
 export const skillRoleSchema = z.object({
   skillId: z.string().uuid(),
   code: z.string().min(1).max(50).regex(/^[A-Z0-9_]+$/, "Code must be uppercase letters, digits, or underscores"),
@@ -56,6 +66,7 @@ const questionFieldsSchema = z.object({
   topicId: z.string().uuid(),
   skillId: z.string().uuid(),
   skillRoleIds: z.array(z.string().uuid()).min(1),
+  conceptIds: z.array(z.string().uuid()).optional(),
   questionType: z.enum([QuestionType.SINGLE, QuestionType.MULTI]).default(QuestionType.SINGLE),
   difficulty: z.enum([Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD]),
   stem: z.string().min(1),
@@ -102,8 +113,8 @@ export const questionBulkSkillRolesSchema = z.object({
   mode: z.enum(["replace", "add"]).default("replace"),
 });
 
-// Certificate / pass-mark fields shared by both blueprint and assignment schemas
-const certPassFields = {
+// Assessment outcome fields shared by blueprint and assignment schemas
+const assessmentOutcomeFields = {
   passMark:               z.number().int().min(0).max(100).default(60),
   issueCertificate:       z.boolean().default(false),
   showProficiencyOnCert:  z.boolean().default(false),
@@ -116,12 +127,19 @@ const certPassFields = {
   ]).default(MultiSelectScoringMode.ALL_OR_NOTHING),
   proctoringPhotoIntervalMinutes: z.number().int().min(0).default(5),
   proctoringInstructions: z.string().optional().nullable(),
+  issueCapabilityReport:        z.boolean().default(false),
+  shareCapabilityWithCandidate: z.boolean().default(false),
+  capabilityStrengthThreshold:  z.number().int().min(0).max(100).default(70),
+  capabilityGapThreshold:       z.number().int().min(0).max(100).default(40),
 };
+
+/** @deprecated use assessmentOutcomeFields — kept as alias for internal refs */
+const certPassFields = assessmentOutcomeFields;
 
 // Named reusable blueprint:
 //   Name + Skill + Topic(s) + Skill Role + Difficulty Mix + Pass mark + Timer
 // Certificate/pass settings live on the blueprint, not on individual topics.
-export const blueprintSchema = z.object({
+const blueprintFieldsSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   skillId: z.string().uuid(),
@@ -132,43 +150,27 @@ export const blueprintSchema = z.object({
   hardCount: z.number().int().min(0),
   timeLimitMinutes: z.number().int().min(0).default(0),
   ...certPassFields,
-}).refine(
-  (d) => d.easyCount + d.mediumCount + d.hardCount > 0,
-  { message: "At least one question must be specified across easy/medium/hard" }
-);
+});
 
-export const assignmentSchema = z.object({
-  userIds: z.array(z.string().uuid()).default([]),
-  /** App ID / directory users not yet in the local DB — provisioned as candidate on assign */
-  provisionCandidates: z
-    .array(
-      z.object({
-        email: z.string().email(),
-        name: z.string().min(1).optional(),
-      })
-    )
-    .optional(),
-  topicIds: z.array(z.string().uuid()).min(1, "At least one topic required"),
-  skillId: z.string().uuid(),
-  skillRoleId: z.string().uuid(),
-  easyCount: z.number().int().min(0),
-  mediumCount: z.number().int().min(0),
-  hardCount: z.number().int().min(0),
-  timeLimitMinutes: z.number().int().min(0).default(0),
-  deadline: z.string().datetime().optional().nullable(),
-  blueprintId: z.string().uuid().optional().nullable(),
-  displayName: z.string().optional(),
-  ...certPassFields,
-})
-  .refine(
-    (d) => d.easyCount + d.mediumCount + d.hardCount > 0,
-    { message: "At least one question must be specified across easy/medium/hard" }
-  )
-  .refine(
-    (d) =>
-      d.userIds.length > 0 || (d.provisionCandidates?.length ?? 0) > 0,
-    { message: "Select at least one candidate" }
-  );
+function refineBlueprintQuestionCounts(
+  d: { easyCount?: number; mediumCount?: number; hardCount?: number },
+  ctx: z.RefinementCtx
+) {
+  if (d.easyCount === undefined || d.mediumCount === undefined || d.hardCount === undefined) return;
+  if (d.easyCount + d.mediumCount + d.hardCount <= 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "At least one question must be specified across easy/medium/hard",
+    });
+  }
+}
+
+export const blueprintSchema = blueprintFieldsSchema.superRefine(refineBlueprintQuestionCounts);
+
+/** Partial update — ZodEffects from refine has no .partial(); use this on PUT */
+export const blueprintUpdateSchema = blueprintFieldsSchema
+  .partial()
+  .superRefine(refineBlueprintQuestionCounts);
 
 export const profileUpdateSchema = z.object({
   country: z.string().optional(),
@@ -201,6 +203,8 @@ export const profileUpdateSchema = z.object({
 });
 
 export const proficiencyOverrideSchema = z.object({
+  skillId: z.string().uuid(),
+  skillRoleId: z.string().uuid(),
   proficiency: z.enum([
     Proficiency.ENTRY,
     Proficiency.BEGINNER,

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { skillSchema, skillUpdateSchema, skillRoleSchema } from "@assessment-os/shared";
+import { skillSchema, skillUpdateSchema, skillRoleSchema, conceptSchema, conceptUpdateSchema } from "@assessment-os/shared";
 import { prisma } from "../../db.js";
 
 export const skillsRouter = Router();
@@ -201,6 +201,67 @@ skillsRouter.put("/:skillId/roles/:roleId", async (req, res, next) => {
 skillsRouter.delete("/:skillId/roles/:roleId", async (req, res, next) => {
   try {
     await prisma.skillRole.delete({ where: { id: req.params.roleId } });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ── Concepts (per skill) ──────────────────────────────────────────────────────
+
+skillsRouter.get("/:skillId/concepts", async (req, res) => {
+  const concepts = await prisma.concept.findMany({
+    where: { skillId: req.params.skillId },
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+  });
+  const counts = await prisma.questionConcept.groupBy({
+    by: ["conceptId"],
+    where: { conceptId: { in: concepts.map((c) => c.id) } },
+    _count: { conceptId: true },
+  });
+  const countMap = Object.fromEntries(counts.map((c) => [c.conceptId, c._count.conceptId]));
+  res.json(concepts.map((c) => ({ ...c, questionCount: countMap[c.id] ?? 0 })));
+});
+
+skillsRouter.post("/:skillId/concepts", async (req, res, next) => {
+  try {
+    const data = conceptSchema.parse(req.body);
+    res.status(201).json(
+      await prisma.concept.create({
+        data: { ...data, skillId: req.params.skillId },
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+skillsRouter.patch("/:skillId/concepts/:conceptId", async (req, res, next) => {
+  try {
+    const data = conceptUpdateSchema.parse(req.body);
+    const existing = await prisma.concept.findFirst({
+      where: { id: req.params.conceptId, skillId: req.params.skillId },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Concept not found" });
+      return;
+    }
+    res.json(await prisma.concept.update({ where: { id: req.params.conceptId }, data }));
+  } catch (e) {
+    next(e);
+  }
+});
+
+skillsRouter.delete("/:skillId/concepts/:conceptId", async (req, res, next) => {
+  try {
+    const existing = await prisma.concept.findFirst({
+      where: { id: req.params.conceptId, skillId: req.params.skillId },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Concept not found" });
+      return;
+    }
+    await prisma.concept.delete({ where: { id: req.params.conceptId } });
     res.json({ ok: true });
   } catch (e) {
     next(e);
