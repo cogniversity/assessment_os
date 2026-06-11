@@ -49,6 +49,10 @@ authRouter.post("/logout", (req, res) => {
   });
 });
 
+authRouter.get("/config", (_req, res) => {
+  res.json({ devAuth: config.devAuthEnabled, oidcConfigured });
+});
+
 authRouter.get("/login", async (req, res, next) => {
   try {
     const oidc = await getOidcConfig();
