@@ -14,7 +14,7 @@ type ManagerQuestionBankRow = {
   topic: { id: string; name: string; category: { name: string } };
 };
 
-type User = { id: string; name: string; email: string; role: string };
+type User = { id: string; name: string; email: string; roles: string[] };
 type Skill = { id: string; name: string; code: string };
 type Topic = { id: string; name: string; category: { name: string } };
 
@@ -41,7 +41,7 @@ export default function ManagerQuestionBanksPage() {
     queryFn: () => api("/admin/topics"),
   });
 
-  const managers = users.filter((u) => u.role === "capability_manager");
+  const managers = users.filter((u) => u.roles.includes("capability_manager"));
 
   const assign = useMutation({
     mutationFn: (body: { userId: string; skillId: string; topicId: string }) =>
